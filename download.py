@@ -11,7 +11,7 @@ email = "educmaia@gmail.com"
 senha = "maia2807"
 
 # All DOU sections for comprehensive coverage
-DEFAULT_SECTIONS = "DO1 DO1E"
+DEFAULT_SECTIONS = "DO1 DO1E DO2 DO3 DO2E DO3E"
 
 URL_LOGIN = "https://inlabs.in.gov.br/logar.php"
 URL_DOWNLOAD = "https://inlabs.in.gov.br/index.php?p="
