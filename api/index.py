@@ -161,12 +161,31 @@ def download_dou_xml_vercel(sections=None):
             response = session.get(url_arquivo, headers=cabecalho_arquivo)
 
             if response.status_code == 200:
-                downloaded_data[dou_secao] = response.content
-                print(f"Downloaded successfully: {data_completa}-{dou_secao}.zip")
+                print(f"[DEBUG] Response for {dou_secao}: {response.status_code}, Content-Length: {len(response.content)}")
+                print(f"[DEBUG] Content-Type: {response.headers.get('content-type', 'unknown')}")
+                print(f"[DEBUG] First 50 bytes: {response.content[:50]}")
+
+                # Check if it's actually a ZIP file
+                if len(response.content) > 4:
+                    zip_signature = response.content[:4]
+                    if zip_signature == b'PK\x03\x04' or zip_signature == b'PK\x05\x06' or zip_signature == b'PK\x07\x08':
+                        downloaded_data[dou_secao] = response.content
+                        print(f"[DEBUG] Downloaded valid ZIP: {data_completa}-{dou_secao}.zip")
+                    else:
+                        print(f"[ERROR] Downloaded content for {dou_secao} is not a valid ZIP file. Signature: {zip_signature}")
+                        # Save first 500 chars to debug
+                        try:
+                            content_preview = response.content[:500].decode('utf-8', errors='ignore')
+                            print(f"[DEBUG] Content preview: {content_preview}")
+                        except:
+                            print(f"[DEBUG] Cannot decode content as text")
+                else:
+                    print(f"[ERROR] Downloaded content for {dou_secao} is too small: {len(response.content)} bytes")
             elif response.status_code == 404:
-                print(f"Not found: {data_completa}-{dou_secao}.zip")
+                print(f"[DEBUG] Not found: {data_completa}-{dou_secao}.zip")
             else:
-                print(f"Error downloading {dou_secao}: status {response.status_code}")
+                print(f"[ERROR] Error downloading {dou_secao}: status {response.status_code}")
+                print(f"[ERROR] Response content: {response.content[:200]}")
 
         session.close()
         return downloaded_data
@@ -181,52 +200,86 @@ def extract_articles_vercel(zip_data):
     articles = []
 
     try:
+        print(f"[DEBUG] Starting extraction from {len(zip_data)} zip files")
         for section, zip_bytes in zip_data.items():
-            print(f"Processing section: {section}")
+            print(f"[DEBUG] Processing section: {section}, ZIP size: {len(zip_bytes)} bytes")
 
-            with zipfile.ZipFile(io.BytesIO(zip_bytes), 'r') as zip_ref:
-                xml_files = [f for f in zip_ref.namelist() if f.endswith('.xml')]
-                print(f"Found {len(xml_files)} XML files in {section}")
+            try:
+                with zipfile.ZipFile(io.BytesIO(zip_bytes), 'r') as zip_ref:
+                    all_files = zip_ref.namelist()
+                    print(f"[DEBUG] All files in {section}: {all_files}")
 
-                for xml_filename in xml_files:
-                    try:
-                        xml_content = zip_ref.read(xml_filename)
-                        root = ET.fromstring(xml_content)
+                    xml_files = [f for f in all_files if f.endswith('.xml')]
+                    print(f"[DEBUG] Found {len(xml_files)} XML files in {section}: {xml_files}")
 
-                        # Extract artCategory
-                        art_category_elem = root.find('.//*[@artCategory]')
-                        art_category_text = art_category_elem.get('artCategory', 'N/A') if art_category_elem is not None else "N/A"
+                    if not xml_files:
+                        # Check if ZIP is valid and what it contains
+                        print(f"[DEBUG] No XML files found. All files: {all_files}")
+                        # Try to read first few bytes to check content
+                        if all_files:
+                            first_file = all_files[0]
+                            try:
+                                content = zip_ref.read(first_file)[:200]
+                                print(f"[DEBUG] First file {first_file} content preview: {content}")
+                            except Exception as e:
+                                print(f"[DEBUG] Error reading first file: {e}")
 
-                        # Extract text from article tags
-                        text_parts = []
-                        for article in root.findall('.//article'):
-                            article_text = ET.tostring(article, encoding='unicode', method='text').strip()
-                            if article_text:
-                                text_parts.append(article_text)
+                    for xml_filename in xml_files:
+                        try:
+                            print(f"[DEBUG] Processing XML file: {xml_filename}")
+                            xml_content = zip_ref.read(xml_filename)
+                            print(f"[DEBUG] XML content size: {len(xml_content)} bytes")
 
-                        full_text = ' '.join(text_parts).strip()
-                        if full_text:
-                            articles.append({
-                                'section': section,
-                                'filename': xml_filename,
-                                'text': full_text,
-                                'xml_path': f"#xml-{section}-{xml_filename}",
-                                'artCategory': art_category_text
-                            })
-                            print(f"Extracted text from {xml_filename} ({len(text_parts)} articles)")
-                        else:
-                            print(f"No text extracted from {xml_filename}")
+                            root = ET.fromstring(xml_content)
+                            print(f"[DEBUG] XML root tag: {root.tag}")
 
-                    except ET.ParseError as e:
-                        print(f"XML parsing error in {xml_filename}: {e}")
-                    except Exception as e:
-                        print(f"Error processing {xml_filename}: {e}")
+                            # Extract artCategory
+                            art_category_elem = root.find('.//*[@artCategory]')
+                            art_category_text = art_category_elem.get('artCategory', 'N/A') if art_category_elem is not None else "N/A"
+
+                            # Extract text from article tags
+                            text_parts = []
+                            for article in root.findall('.//article'):
+                                article_text = ET.tostring(article, encoding='unicode', method='text').strip()
+                                if article_text:
+                                    text_parts.append(article_text)
+
+                            print(f"[DEBUG] Found {len(text_parts)} articles in {xml_filename}")
+
+                            full_text = ' '.join(text_parts).strip()
+                            if full_text:
+                                articles.append({
+                                    'section': section,
+                                    'filename': xml_filename,
+                                    'text': full_text,
+                                    'xml_path': f"#xml-{section}-{xml_filename}",
+                                    'artCategory': art_category_text
+                                })
+                                print(f"[DEBUG] Successfully extracted text from {xml_filename} ({len(text_parts)} articles, {len(full_text)} chars)")
+                            else:
+                                print(f"[DEBUG] No text extracted from {xml_filename}")
+
+                        except ET.ParseError as e:
+                            print(f"[ERROR] XML parsing error in {xml_filename}: {e}")
+                        except Exception as e:
+                            print(f"[ERROR] Error processing {xml_filename}: {e}")
+                            import traceback
+                            print(f"[ERROR] Traceback: {traceback.format_exc()}")
+
+            except zipfile.BadZipFile as e:
+                print(f"[ERROR] Bad ZIP file for section {section}: {e}")
+            except Exception as e:
+                print(f"[ERROR] Error opening ZIP for section {section}: {e}")
+                import traceback
+                print(f"[ERROR] Traceback: {traceback.format_exc()}")
 
     except Exception as e:
-        print(f"Error in extract_articles_vercel: {e}")
+        print(f"[ERROR] Error in extract_articles_vercel: {e}")
+        import traceback
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
         raise
 
-    print(f"Extraction completed. Total articles: {len(articles)}")
+    print(f"[DEBUG] Extraction completed. Total articles: {len(articles)}")
     return articles
 
 def find_matches_vercel(search_terms):
