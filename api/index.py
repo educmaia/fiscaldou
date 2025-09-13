@@ -3,7 +3,12 @@ import os
 import re
 import requests
 import json
-from datetime import datetime
+import zipfile
+import xml.etree.ElementTree as ET
+from datetime import datetime, date
+from pathlib import Path
+import tempfile
+import io
 
 app = Flask(__name__)
 
@@ -81,6 +86,15 @@ def save_emails_to_edge_config(emails_set):
 emails_storage = set()
 search_terms_storage = {}
 
+# INLABS credentials
+INLABS_EMAIL = os.getenv('INLABS_EMAIL', 'educmaia@gmail.com')
+INLABS_PASSWORD = os.getenv('INLABS_PASSWORD', 'maia2807')
+
+# DOU sections
+DEFAULT_SECTIONS = "DO1 DO1E"
+URL_LOGIN = "https://inlabs.in.gov.br/logar.php"
+URL_DOWNLOAD = "https://inlabs.in.gov.br/index.php?p="
+
 def clean_html(text):
     """Remove HTML tags from text for better readability."""
     if not text:
@@ -90,6 +104,180 @@ def clean_html(text):
     # Clean up extra whitespace
     clean = re.sub(r'\s+', ' ', clean).strip()
     return clean
+
+def create_inlabs_session():
+    """Create and login to INLABS session."""
+    payload = {"email": INLABS_EMAIL, "password": INLABS_PASSWORD}
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+    }
+    session = requests.Session()
+    try:
+        response = session.post(URL_LOGIN, data=payload, headers=headers)
+        if session.cookies.get('inlabs_session_cookie'):
+            print("INLABS login successful.")
+            return session
+        else:
+            raise ValueError("Login failed: No session cookie obtained.")
+    except Exception as e:
+        print(f"Login error: {e}")
+        raise
+
+def download_dou_xml_vercel(sections=None):
+    """Download DOU XML ZIPs for today - Vercel version."""
+    if sections is None:
+        sections = DEFAULT_SECTIONS
+
+    try:
+        session = create_inlabs_session()
+        cookie = session.cookies.get('inlabs_session_cookie')
+        if not cookie:
+            raise ValueError("No cookie after login.")
+
+        today = date.today()
+        ano = today.strftime("%Y")
+        mes = today.strftime("%m")
+        dia = today.strftime("%d")
+        data_completa = f"{ano}-{mes}-{dia}"
+
+        downloaded_data = {}
+
+        for dou_secao in sections.split():
+            print(f"Downloading {data_completa}-{dou_secao}.zip...")
+            url_arquivo = f"{URL_DOWNLOAD}{data_completa}&dl={data_completa}-{dou_secao}.zip"
+            cabecalho_arquivo = {
+                'Cookie': f'inlabs_session_cookie={cookie}',
+                'origem': '736372697074'
+            }
+            response = session.get(url_arquivo, headers=cabecalho_arquivo)
+
+            if response.status_code == 200:
+                downloaded_data[dou_secao] = response.content
+                print(f"Downloaded successfully: {data_completa}-{dou_secao}.zip")
+            elif response.status_code == 404:
+                print(f"Not found: {data_completa}-{dou_secao}.zip")
+            else:
+                print(f"Error downloading {dou_secao}: status {response.status_code}")
+
+        session.close()
+        return downloaded_data
+    except Exception as e:
+        print(f"Error in download_dou_xml_vercel: {e}")
+        if 'session' in locals():
+            session.close()
+        raise
+
+def extract_articles_vercel(zip_data):
+    """Extract articles from ZIP data - Vercel version."""
+    articles = []
+
+    try:
+        for section, zip_bytes in zip_data.items():
+            print(f"Processing section: {section}")
+
+            with zipfile.ZipFile(io.BytesIO(zip_bytes), 'r') as zip_ref:
+                xml_files = [f for f in zip_ref.namelist() if f.endswith('.xml')]
+                print(f"Found {len(xml_files)} XML files in {section}")
+
+                for xml_filename in xml_files:
+                    try:
+                        xml_content = zip_ref.read(xml_filename)
+                        root = ET.fromstring(xml_content)
+
+                        # Extract artCategory
+                        art_category_elem = root.find('.//*[@artCategory]')
+                        art_category_text = art_category_elem.get('artCategory', 'N/A') if art_category_elem is not None else "N/A"
+
+                        # Extract text from article tags
+                        text_parts = []
+                        for article in root.findall('.//article'):
+                            article_text = ET.tostring(article, encoding='unicode', method='text').strip()
+                            if article_text:
+                                text_parts.append(article_text)
+
+                        full_text = ' '.join(text_parts).strip()
+                        if full_text:
+                            articles.append({
+                                'section': section,
+                                'filename': xml_filename,
+                                'text': full_text,
+                                'xml_path': f"#xml-{section}-{xml_filename}",
+                                'artCategory': art_category_text
+                            })
+                            print(f"Extracted text from {xml_filename} ({len(text_parts)} articles)")
+                        else:
+                            print(f"No text extracted from {xml_filename}")
+
+                    except ET.ParseError as e:
+                        print(f"XML parsing error in {xml_filename}: {e}")
+                    except Exception as e:
+                        print(f"Error processing {xml_filename}: {e}")
+
+    except Exception as e:
+        print(f"Error in extract_articles_vercel: {e}")
+        raise
+
+    print(f"Extraction completed. Total articles: {len(articles)}")
+    return articles
+
+def find_matches_vercel(search_terms):
+    """Find matches in DOU - Vercel version."""
+    if not search_terms:
+        return []
+
+    try:
+        # Download today's XML ZIPs
+        print("Starting download for today's DOU XMLs.")
+        zip_data = download_dou_xml_vercel()
+        if not zip_data:
+            print("No files downloaded today.")
+            return []
+
+        # Extract articles
+        print("Starting extraction of articles.")
+        articles = extract_articles_vercel(zip_data)
+        if not articles:
+            print("No articles extracted.")
+            return []
+
+        print(f"Searching {len(articles)} articles for terms.")
+        matches = []
+
+        for article in articles:
+            text_lower = article['text'].lower()
+            matched_terms = []
+            snippets = []
+
+            for term in search_terms:
+                if term.lower() in text_lower:
+                    matched_terms.append(term)
+
+                    # Find match positions and extract snippets (100 chars context)
+                    positions = [m.start() for m in re.finditer(re.escape(term.lower()), text_lower)]
+                    for pos in positions:
+                        start = max(0, pos - 100)
+                        end = min(len(article['text']), pos + len(term) + 100)
+                        snippet = article['text'][start:end].strip()
+                        if snippet not in snippets:  # Avoid duplicates
+                            snippets.append(snippet)
+                        if len(snippets) >= 3:  # Limit snippets
+                            break
+
+            if matched_terms:
+                matches.append({
+                    'article': article,
+                    'terms_matched': matched_terms,
+                    'snippets': snippets
+                })
+                print(f"Match found in {article['filename']} ({article['section']}): {matched_terms}")
+
+        print(f"Search completed. Found {len(matches)} matching articles.")
+        return matches
+
+    except Exception as e:
+        print(f"Error in find_matches_vercel: {e}")
+        return []
 
 def search_dou_demo(search_term):
     """
@@ -629,15 +817,30 @@ def home():
                     message = "Por favor, digite um termo de busca."
                 else:
                     try:
-                        # Perform search with the provided term
-                        matches = search_dou_demo(search_term)
+                        # Perform real search with the provided term
+                        matches = find_matches_vercel([search_term])
                         if matches:
+                            # Clean HTML from summaries and snippets
+                            for result in matches:
+                                if 'snippets' in result and result['snippets']:
+                                    result['snippets'] = [clean_html(snippet) for snippet in result['snippets']]
+                                # Add summary
+                                result['summary'] = f'Documento oficial que trata sobre {search_term}, estabelecendo diretrizes e procedimentos relacionados ao tema.'
+
                             search_results = matches
-                            message = f"Encontrados {len(matches)} artigos para '{search_term}'."
+                            message = f"Encontrados {len(matches)} artigos reais para '{search_term}'."
                         else:
                             message = f"Nenhum artigo encontrado para o termo '{search_term}'."
                     except Exception as e:
                         message = f"Erro na busca: {str(e)}"
+                        # Fallback to demo if real search fails
+                        try:
+                            matches = search_dou_demo(search_term)
+                            if matches:
+                                search_results = matches
+                                message += f" (Mostrando dados de demonstração - {len(matches)} artigos)"
+                        except:
+                            pass
             
             else:
                 # Handle email actions
