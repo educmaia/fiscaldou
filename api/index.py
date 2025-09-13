@@ -598,7 +598,15 @@ HTML_TEMPLATE = '''
             gap: 25px;
             max-width: 1400px;
             margin: 0 auto;
+            padding: 20px;
             align-items: start;
+        }
+
+        .three-column-layout {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr 1fr !important;
+            gap: 25px !important;
+            align-items: start !important;
         }
 
         .card {
@@ -836,26 +844,27 @@ HTML_TEMPLATE = '''
             margin-top: 4px;
         }
 
-        @media (max-width: 1200px) {
-            .container {
+        @media (max-width: 1400px) {
+            .container, .three-column-layout {
                 grid-template-columns: 1fr 1fr 1fr;
                 gap: 20px;
             }
         }
 
         @media (max-width: 1024px) {
-            .container {
-                grid-template-columns: 1fr;
-                gap: 25px;
+            .container, .three-column-layout {
+                grid-template-columns: 1fr 1fr 1fr;
+                gap: 15px;
             }
 
             .card {
-                margin-bottom: 20px;
+                margin-bottom: 15px;
+                padding: 20px;
             }
         }
 
         @media (max-width: 768px) {
-            .container {
+            .container, .three-column-layout {
                 grid-template-columns: 1fr;
                 gap: 20px;
             }
@@ -916,7 +925,7 @@ HTML_TEMPLATE = '''
         </div>
     {% endif %}
 
-    <div class="container" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 25px; align-items: start;">
+    <div class="container three-column-layout">
         <!-- PRIMEIRA COLUNA: ESTATÍSTICAS -->
         <div class="card">
             <h2>📊 Estatísticas da Busca</h2>
