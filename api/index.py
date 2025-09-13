@@ -120,7 +120,7 @@ INLABS_EMAIL = os.getenv('INLABS_EMAIL', 'educmaia@gmail.com')
 INLABS_PASSWORD = os.getenv('INLABS_PASSWORD', 'maia2807')
 
 # DOU sections - Start with just DO1 to test
-DEFAULT_SECTIONS = "DO1"
+DEFAULT_SECTIONS = "DO1 DO1E DO2 DO3 DO2E DO3E"
 URL_LOGIN = "https://inlabs.in.gov.br/logar.php"
 URL_DOWNLOAD = "https://inlabs.in.gov.br/index.php?p="
 
@@ -781,11 +781,18 @@ HTML_TEMPLATE = '''
             margin-bottom: 20px;
             transition: var(--transition);
             cursor: pointer;
+            position: relative;
         }
 
         .result-item:hover {
-            box-shadow: var(--shadow);
-            transform: translateY(-1px);
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
+            border-color: var(--primary-color);
+            background: linear-gradient(135deg, var(--background) 0%, rgba(59, 130, 246, 0.02) 100%);
+        }
+
+        .result-item:active {
+            transform: translateY(0);
         }
 
         .result-item h4 {
@@ -901,16 +908,317 @@ HTML_TEMPLATE = '''
             color: #92400e;
             font-weight: 500;
         }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(2px);
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .modal-content {
+            background-color: var(--card-bg);
+            margin: 2% auto;
+            padding: 0;
+            border-radius: var(--radius);
+            width: 90%;
+            max-width: 800px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .modal-header {
+            background: var(--primary-color);
+            color: white;
+            padding: 20px;
+            border-radius: var(--radius) var(--radius) 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 1.4rem;
+        }
+
+        .close {
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 1;
+            opacity: 0.7;
+            transition: var(--transition);
+        }
+
+        .close:hover,
+        .close:focus {
+            opacity: 1;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+        }
+
+        .modal-body {
+            padding: 25px;
+            line-height: 1.6;
+            color: var(--text-primary);
+        }
+
+        .modal-footer {
+            padding: 20px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .btn-primary, .btn-secondary {
+            padding: 10px 20px;
+            border: none;
+            border-radius: var(--radius);
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+            font-size: 0.9rem;
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: var(--background);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--card-bg);
+            transform: translateY(-1px);
+        }
+
+        .result-detail {
+            margin-bottom: 20px;
+        }
+
+        .result-detail h3 {
+            color: var(--primary-color);
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+
+        .result-detail .meta-info {
+            background: var(--background);
+            padding: 15px;
+            border-radius: var(--radius);
+            margin-bottom: 15px;
+            font-size: 0.9rem;
+        }
+
+        .result-detail .content {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .highlight {
+            background: rgba(59, 130, 246, 0.2);
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .modal-content {
+                width: 95%;
+                margin: 5% auto;
+            }
+
+            .modal-header {
+                padding: 15px;
+            }
+
+            .modal-body {
+                padding: 20px;
+            }
+
+            .modal-footer {
+                padding: 15px;
+                flex-direction: column;
+            }
+
+            .btn-primary, .btn-secondary {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+        }
     </style>
     <script>
+        // Dados dos resultados (será preenchido pelo template)
+        let searchResults = {{ results|tojson|safe if results else '[]' }};
+        let currentModalContent = '';
+
         function setTerm(term) {
             document.getElementById('search_term').value = term;
         }
 
         function openModal(index) {
-            // Para versão serverless, apenas mostra um alert
-            alert('Funcionalidade de modal disponível na versão completa. Confira o código no GitHub!');
+            const result = searchResults[index - 1]; // index-1 pois o template usa loop.index que começa em 1
+            if (!result) return;
+
+            const article = result.article;
+            const title = article.title || article.filename || 'Documento DOU';
+            const section = article.section || 'N/A';
+            const terms = result.terms_matched || [];
+            const summary = result.summary || '';
+            const snippets = result.snippets || [];
+            const fullText = article.text || 'Conteúdo não disponível';
+
+            // Highlight dos termos encontrados no texto
+            let highlightedText = fullText;
+            terms.forEach(term => {
+                const regex = new RegExp(`(${escapeRegExp(term)})`, 'gi');
+                highlightedText = highlightedText.replace(regex, '<span class="highlight">$1</span>');
+            });
+
+            // Construir conteúdo do modal
+            let modalHtml = `
+                <div class="result-detail">
+                    <div class="meta-info">
+                        <strong>📄 Documento:</strong> ${title}<br>
+                        <strong>📋 Seção:</strong> ${section}<br>
+                        <strong>📁 Arquivo:</strong> ${article.filename || 'N/A'}<br>
+                        <strong>🔍 Termos encontrados:</strong> ${terms.join(', ')}<br>
+                        <strong>📝 Tamanho:</strong> ${fullText.length.toLocaleString()} caracteres
+                    </div>
+            `;
+
+            if (summary) {
+                modalHtml += `
+                    <div class="result-detail">
+                        <h3>🤖 Resumo (IA)</h3>
+                        <div style="background: rgba(59, 130, 246, 0.1); padding: 15px; border-radius: var(--radius); border-left: 4px solid var(--primary-color);">
+                            ${summary}
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (snippets && snippets.length > 0) {
+                modalHtml += `
+                    <div class="result-detail">
+                        <h3>📝 Trechos Relevantes</h3>
+                `;
+                snippets.forEach(snippet => {
+                    modalHtml += `<div class="snippet" style="background: var(--background); padding: 12px; margin: 8px 0; border-radius: var(--radius); border-left: 3px solid var(--success-color);">${snippet}</div>`;
+                });
+                modalHtml += `</div>`;
+            }
+
+            modalHtml += `
+                <div class="result-detail">
+                    <h3>📄 Conteúdo Completo</h3>
+                    <div class="content">${highlightedText}</div>
+                </div>
+            `;
+
+            // Definir conteúdo do modal
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalContent').innerHTML = modalHtml;
+            currentModalContent = fullText;
+
+            // Mostrar modal
+            const modal = document.getElementById('resultModal');
+            modal.style.display = 'block';
+            document.body.style.overflow = 'hidden'; // Prevenir scroll do fundo
+
+            // Scroll para o topo do modal
+            const modalContent = modal.querySelector('.modal-content');
+            modalContent.scrollTop = 0;
         }
+
+        function closeModal() {
+            const modal = document.getElementById('resultModal');
+            modal.style.display = 'none';
+            document.body.style.overflow = 'auto'; // Restaurar scroll
+        }
+
+        function copyToClipboard() {
+            if (currentModalContent) {
+                navigator.clipboard.writeText(currentModalContent).then(() => {
+                    alert('Conteúdo copiado para a área de transferência!');
+                }).catch(err => {
+                    // Fallback para navegadores mais antigos
+                    const textArea = document.createElement('textarea');
+                    textArea.value = currentModalContent;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    alert('Conteúdo copiado para a área de transferência!');
+                });
+            }
+        }
+
+        function escapeRegExp(string) {
+            return string.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
+        }
+
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            // Fechar modal clicando no X
+            const closeBtn = document.querySelector('.close');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', closeModal);
+            }
+
+            // Fechar modal clicando fora do conteúdo
+            const modal = document.getElementById('resultModal');
+            if (modal) {
+                modal.addEventListener('click', function(e) {
+                    if (e.target === modal) {
+                        closeModal();
+                    }
+                });
+            }
+
+            // Fechar modal com tecla ESC
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    closeModal();
+                }
+            });
+        });
     </script>
 </head>
 <body>
@@ -1046,7 +1354,9 @@ HTML_TEMPLATE = '''
                                     {% endfor %}
                                 </div>
                             {% endif %}
-                            <p style="color: var(--primary-color); font-size: 0.9rem; cursor: pointer; margin-top: 10px;">Clique para ver detalhes</p>
+                            <p style="color: var(--primary-color); font-size: 0.9rem; cursor: pointer; margin-top: 10px; font-weight: 500;">
+                                🔍 Clique para ver detalhes completos
+                            </p>
                         </div>
                     {% endfor %}
                 </div>
@@ -1123,6 +1433,26 @@ HTML_TEMPLATE = '''
 
         </div>
     </div>
+
+    <!-- Modal para visualização detalhada dos resultados -->
+    <div id="resultModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Detalhes do Resultado</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="modalContent">
+                    <!-- Conteúdo será preenchido via JavaScript -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeModal()" class="btn-secondary">Fechar</button>
+                <button onclick="copyToClipboard()" class="btn-primary">Copiar Texto</button>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>
 '''
