@@ -107,6 +107,7 @@ def clean_html(text):
 
 def create_inlabs_session():
     """Create and login to INLABS session."""
+    print(f"[DEBUG] Attempting login with email: {INLABS_EMAIL}")
     payload = {"email": INLABS_EMAIL, "password": INLABS_PASSWORD}
     headers = {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -114,14 +115,21 @@ def create_inlabs_session():
     }
     session = requests.Session()
     try:
-        response = session.post(URL_LOGIN, data=payload, headers=headers)
+        print(f"[DEBUG] Making POST request to: {URL_LOGIN}")
+        response = session.post(URL_LOGIN, data=payload, headers=headers, timeout=30)
+        print(f"[DEBUG] Login response status: {response.status_code}")
+        print(f"[DEBUG] Response cookies: {dict(session.cookies)}")
+
         if session.cookies.get('inlabs_session_cookie'):
-            print("INLABS login successful.")
+            print("[DEBUG] INLABS login successful.")
             return session
         else:
+            print(f"[DEBUG] Login failed. Response content: {response.text[:200]}...")
             raise ValueError("Login failed: No session cookie obtained.")
     except Exception as e:
-        print(f"Login error: {e}")
+        print(f"[ERROR] Login error: {e}")
+        import traceback
+        print(f"[ERROR] Login traceback: {traceback.format_exc()}")
         raise
 
 def download_dou_xml_vercel(sections=None):
@@ -761,18 +769,79 @@ HTML_TEMPLATE = '''
     {% endif %}
 
     <div class="container">
+        <!-- PRIMEIRA COLUNA: ESTATÍSTICAS -->
+        <div class="card">
+            <h2>📊 Estatísticas da Busca</h2>
+
+            <!-- Botão de Atualização -->
+            <form method="post" style="margin-bottom: 20px;">
+                <input type="hidden" name="action" value="refresh_cache">
+                <button type="submit" style="background: var(--warning-color); width: 100%;">
+                    🔄 Atualizar Cache DOU
+                </button>
+            </form>
+
+            {% if search_stats %}
+                {% if search_stats.get('error') %}
+                    <div style="padding: 15px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: var(--radius); color: var(--error-color); margin-bottom: 20px;">
+                        <h4>🚨 Erro no Processamento</h4>
+                        <p><strong>Erro:</strong> {{ search_stats.get('error', 'Unknown error') }}</p>
+                        <details style="margin-top: 10px;">
+                            <summary style="cursor: pointer; color: var(--primary-color);">Ver detalhes técnicos</summary>
+                            <pre style="white-space: pre-wrap; font-size: 0.8rem; margin-top: 10px;">{{ search_stats.get('traceback', 'No traceback available') }}</pre>
+                        </details>
+                        <p style="margin-top: 10px;"><a href="/debug" target="_blank" style="color: var(--primary-color);">🔧 Ir para página de debug</a></p>
+                    </div>
+                {% else %}
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-number">{{ search_stats.get('xml_files_processed', 0) }}</span>
+                            <div class="stat-label">Arquivos XML<br>Processados</div>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-number">{{ search_stats.get('total_articles_extracted', 0) }}</span>
+                            <div class="stat-label">Artigos<br>Extraídos</div>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-number">{{ search_stats.get('sections_downloaded', 0) }}</span>
+                            <div class="stat-label">Seções DOU<br>Baixadas</div>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-number">{{ search_stats.get('matches_found', 0) }}</span>
+                            <div class="stat-label">Matches<br>Encontrados</div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 20px; padding: 15px; background: var(--background); border-radius: var(--radius); border: 1px solid var(--border);">
+                        <h4>⏱️ Tempo de Processamento</h4>
+                        <ul style="margin: 10px 0; padding-left: 20px; color: var(--text-secondary); font-size: 0.9rem;">
+                            <li>Download: {{ search_stats.get('download_time', 0) }}s</li>
+                            <li>Extração: {{ search_stats.get('extraction_time', 0) }}s</li>
+                            <li>Busca: {{ search_stats.get('search_time', 0) }}s</li>
+                            <li><strong>Total: {{ (search_stats.get('download_time', 0) + search_stats.get('extraction_time', 0) + search_stats.get('search_time', 0))|round(2) }}s</strong></li>
+                        </ul>
+                    </div>
+                {% endif %}
+            {% else %}
+                <div style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 40px;">
+                    📊 Faça uma busca para ver as estatísticas de processamento
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- SEGUNDA COLUNA: BUSCAR NO DOU -->
         <div class="card">
             <h2>🔍 Buscar no DOU</h2>
             <form method="post">
                 <div class="form-group">
                     <label for="search_term">Termo de busca</label>
-                    <input type="text" id="search_term" name="search_term" 
-                           placeholder="Digite o termo de busca" 
+                    <input type="text" id="search_term" name="search_term"
+                           placeholder="Digite o termo de busca"
                            value="{{ search_term or '' }}" required>
                 </div>
                 <div class="form-group">
                     <label>
-                        <input type="checkbox" name="use_ai" {{ 'checked' if use_ai else '' }}> 
+                        <input type="checkbox" name="use_ai" {{ 'checked' if use_ai else '' }}>
                         Usar IA para resumos (OpenAI)
                     </label>
                 </div>
@@ -797,7 +866,7 @@ HTML_TEMPLATE = '''
                     {% for result in results %}
                         <div class="result-item" onclick="openModal({{ loop.index }})">
                             <h4>{{ result.article.title or result.article.filename }} ({{ result.article.section }})</h4>
-                            <p><strong style="color: var(--success-color);">🔍 Termos que geraram este resultado:</strong> 
+                            <p><strong style="color: var(--success-color);">🔍 Termos que geraram este resultado:</strong>
                                <span style="background: var(--success-color); color: white; padding: 2px 6px; border-radius: 12px; font-weight: bold;">{{ result.terms_matched|join('</span> <span style="background: var(--success-color); color: white; padding: 2px 6px; border-radius: 12px; font-weight: bold;">') }}</span>
                             </p>
                             {% if result.summary %}
@@ -818,44 +887,7 @@ HTML_TEMPLATE = '''
             {% endif %}
         </div>
 
-        <div class="card">
-            <h2>📊 Estatísticas da Busca</h2>
-
-            {% if search_stats %}
-                <div class="stats-grid">
-                    <div class="stat-item">
-                        <span class="stat-number">{{ search_stats.get('xml_files_processed', 0) }}</span>
-                        <div class="stat-label">Arquivos XML<br>Processados</div>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-number">{{ search_stats.get('total_articles_extracted', 0) }}</span>
-                        <div class="stat-label">Artigos<br>Extraídos</div>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-number">{{ search_stats.get('sections_downloaded', 0) }}</span>
-                        <div class="stat-label">Seções DOU<br>Baixadas</div>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-number">{{ search_stats.get('matches_found', 0) }}</span>
-                        <div class="stat-label">Matches<br>Encontrados</div>
-                    </div>
-                </div>
-
-                <div style="margin-top: 20px; padding: 15px; background: var(--background); border-radius: var(--radius); border: 1px solid var(--border);">
-                    <h4>⏱️ Tempo de Processamento</h4>
-                    <ul style="margin: 10px 0; padding-left: 20px; color: var(--text-secondary); font-size: 0.9rem;">
-                        <li>Download: {{ search_stats.get('download_time', 0) }}s</li>
-                        <li>Extração: {{ search_stats.get('extraction_time', 0) }}s</li>
-                        <li>Busca: {{ search_stats.get('search_time', 0) }}s</li>
-                        <li><strong>Total: {{ (search_stats.get('download_time', 0) + search_stats.get('extraction_time', 0) + search_stats.get('search_time', 0))|round(2) }}s</strong></li>
-                    </ul>
-                </div>
-            {% else %}
-                <div style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 40px;">
-                    📊 Faça uma busca para ver as estatísticas de processamento
-                </div>
-            {% endif %}
-        </div>
+        <!-- TERCEIRA COLUNA: EMAILS -->
 
         <div class="card">
             <h2>📧 Gerenciar Emails</h2>
@@ -936,7 +968,10 @@ def home():
                 else:
                     try:
                         # Perform real search with the provided term
+                        print(f"[DEBUG] Starting search for term: {search_term}")
                         matches, search_stats = find_matches_vercel([search_term])
+                        print(f"[DEBUG] Search completed. Matches: {len(matches) if matches else 0}, Stats: {search_stats}")
+
                         if matches:
                             # Clean HTML from summaries and snippets
                             for result in matches:
@@ -951,10 +986,13 @@ def home():
                             if search_stats.get('xml_files_processed', 0) > 0:
                                 message = f"Nenhum artigo encontrado para o termo '{search_term}' (Processados {search_stats.get('xml_files_processed', 0)} arquivos XML)."
                             else:
-                                message = f"Nenhum artigo encontrado para o termo '{search_term}'."
+                                message = f"Nenhum artigo encontrado para o termo '{search_term}'. Debug: {search_stats}"
                     except Exception as e:
+                        print(f"[ERROR] Search failed: {str(e)}")
+                        import traceback
+                        print(f"[ERROR] Traceback: {traceback.format_exc()}")
                         message = f"Erro na busca: {str(e)}"
-                        search_stats = {}
+                        search_stats = {'error': str(e), 'traceback': traceback.format_exc()}
                         # Fallback to demo if real search fails
                         try:
                             matches = search_dou_demo(search_term)
@@ -964,11 +1002,22 @@ def home():
                         except:
                             pass
             
+            elif 'action' in request.form and request.form.get('action') == 'refresh_cache':
+                # Handle cache refresh
+                try:
+                    print("[DEBUG] Refreshing cache - downloading fresh DOU data")
+                    matches, search_stats = find_matches_vercel(['teste'])  # Use a dummy term to trigger download
+                    message = f"Cache atualizado! Processados {search_stats.get('xml_files_processed', 0)} arquivos XML em {search_stats.get('download_time', 0):.2f}s"
+                except Exception as e:
+                    print(f"[ERROR] Cache refresh failed: {e}")
+                    message = f"Erro ao atualizar cache: {str(e)}"
+                    search_stats = {'error': str(e)}
+
             else:
                 # Handle email actions
                 action = request.form.get('action')
                 email = request.form.get('email', '').strip().lower()
-                
+
                 if action in ['register', 'unregister'] and email:
                     if action == 'register':
                         if email in current_emails:
@@ -1055,6 +1104,41 @@ def config():
         }
     except Exception as e:
         return {"error": str(e)}, 500
+
+@app.route('/debug')
+def debug():
+    """Debug endpoint to test individual functions."""
+    try:
+        debug_info = {
+            "status": "ok",
+            "timestamp": datetime.now().isoformat(),
+            "environment_vars": {
+                "INLABS_EMAIL": INLABS_EMAIL,
+                "INLABS_PASSWORD": "***" if INLABS_PASSWORD else "NOT SET",
+                "URL_LOGIN": URL_LOGIN,
+                "URL_DOWNLOAD": URL_DOWNLOAD,
+                "DEFAULT_SECTIONS": DEFAULT_SECTIONS
+            }
+        }
+
+        # Test search function with a simple term
+        try:
+            print("[DEBUG] Testing search function...")
+            matches, stats = find_matches_vercel(['teste'])
+            debug_info['test_search'] = {
+                "matches": len(matches) if matches else 0,
+                "stats": stats,
+                "success": True
+            }
+        except Exception as e:
+            debug_info['test_search'] = {
+                "error": str(e),
+                "success": False
+            }
+
+        return debug_info
+    except Exception as e:
+        return {"error": str(e), "success": False}, 500
 
 @app.route('/favicon.ico')
 def favicon():
