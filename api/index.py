@@ -541,9 +541,10 @@ HTML_TEMPLATE = '''
         .container {
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
-            gap: 30px;
+            gap: 25px;
             max-width: 1400px;
             margin: 0 auto;
+            align-items: start;
         }
 
         .card {
@@ -781,10 +782,21 @@ HTML_TEMPLATE = '''
             margin-top: 4px;
         }
 
+        @media (max-width: 1200px) {
+            .container {
+                grid-template-columns: 1fr 1fr 1fr;
+                gap: 20px;
+            }
+        }
+
         @media (max-width: 1024px) {
             .container {
-                grid-template-columns: 1fr 1fr;
+                grid-template-columns: 1fr;
                 gap: 25px;
+            }
+
+            .card {
+                margin-bottom: 20px;
             }
         }
 
@@ -850,7 +862,7 @@ HTML_TEMPLATE = '''
         </div>
     {% endif %}
 
-    <div class="container">
+    <div class="container" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 25px; align-items: start;">
         <!-- PRIMEIRA COLUNA: ESTATÍSTICAS -->
         <div class="card">
             <h2>📊 Estatísticas da Busca</h2>
