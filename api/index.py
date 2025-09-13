@@ -222,25 +222,62 @@ def extract_articles_vercel(zip_data):
     return articles
 
 def find_matches_vercel(search_terms):
-    """Find matches in DOU - Vercel version."""
+    """Find matches in DOU - Vercel version with statistics."""
     if not search_terms:
-        return []
+        return [], {}
+
+    stats = {
+        'sections_downloaded': 0,
+        'zip_files_downloaded': 0,
+        'xml_files_processed': 0,
+        'total_articles_extracted': 0,
+        'articles_searched': 0,
+        'matches_found': 0,
+        'download_time': 0,
+        'extraction_time': 0,
+        'search_time': 0
+    }
 
     try:
+        import time
+
         # Download today's XML ZIPs
+        start_time = time.time()
         print("Starting download for today's DOU XMLs.")
         zip_data = download_dou_xml_vercel()
+        stats['download_time'] = round(time.time() - start_time, 2)
+
         if not zip_data:
             print("No files downloaded today.")
-            return []
+            return [], stats
+
+        stats['sections_downloaded'] = len(zip_data)
+        stats['zip_files_downloaded'] = len(zip_data)
 
         # Extract articles
+        start_time = time.time()
         print("Starting extraction of articles.")
         articles = extract_articles_vercel(zip_data)
+        stats['extraction_time'] = round(time.time() - start_time, 2)
+
         if not articles:
             print("No articles extracted.")
-            return []
+            return [], stats
 
+        stats['total_articles_extracted'] = len(articles)
+        stats['articles_searched'] = len(articles)
+
+        # Count XML files processed
+        for section, zip_bytes in zip_data.items():
+            try:
+                with zipfile.ZipFile(io.BytesIO(zip_bytes), 'r') as zip_ref:
+                    xml_files = [f for f in zip_ref.namelist() if f.endswith('.xml')]
+                    stats['xml_files_processed'] += len(xml_files)
+            except:
+                pass
+
+        # Search
+        start_time = time.time()
         print(f"Searching {len(articles)} articles for terms.")
         matches = []
 
@@ -272,12 +309,15 @@ def find_matches_vercel(search_terms):
                 })
                 print(f"Match found in {article['filename']} ({article['section']}): {matched_terms}")
 
+        stats['search_time'] = round(time.time() - start_time, 2)
+        stats['matches_found'] = len(matches)
+
         print(f"Search completed. Found {len(matches)} matching articles.")
-        return matches
+        return matches, stats
 
     except Exception as e:
         print(f"Error in find_matches_vercel: {e}")
-        return []
+        return [], stats
 
 def search_dou_demo(search_term):
     """
@@ -410,9 +450,9 @@ HTML_TEMPLATE = '''
 
         .container {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 40px;
-            max-width: 1200px;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 30px;
+            max-width: 1400px;
             margin: 0 auto;
         }
 
@@ -623,6 +663,41 @@ HTML_TEMPLATE = '''
             border: 1px solid var(--border);
         }
 
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin: 15px 0;
+        }
+
+        .stat-item {
+            background: var(--background);
+            padding: 12px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            display: block;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        @media (max-width: 1024px) {
+            .container {
+                grid-template-columns: 1fr 1fr;
+                gap: 25px;
+            }
+        }
+
         @media (max-width: 768px) {
             .container {
                 grid-template-columns: 1fr;
@@ -635,6 +710,10 @@ HTML_TEMPLATE = '''
 
             .card {
                 padding: 20px;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
             }
         }
 
@@ -740,6 +819,45 @@ HTML_TEMPLATE = '''
         </div>
 
         <div class="card">
+            <h2>📊 Estatísticas da Busca</h2>
+
+            {% if search_stats %}
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-number">{{ search_stats.get('xml_files_processed', 0) }}</span>
+                        <div class="stat-label">Arquivos XML<br>Processados</div>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number">{{ search_stats.get('total_articles_extracted', 0) }}</span>
+                        <div class="stat-label">Artigos<br>Extraídos</div>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number">{{ search_stats.get('sections_downloaded', 0) }}</span>
+                        <div class="stat-label">Seções DOU<br>Baixadas</div>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number">{{ search_stats.get('matches_found', 0) }}</span>
+                        <div class="stat-label">Matches<br>Encontrados</div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px; padding: 15px; background: var(--background); border-radius: var(--radius); border: 1px solid var(--border);">
+                    <h4>⏱️ Tempo de Processamento</h4>
+                    <ul style="margin: 10px 0; padding-left: 20px; color: var(--text-secondary); font-size: 0.9rem;">
+                        <li>Download: {{ search_stats.get('download_time', 0) }}s</li>
+                        <li>Extração: {{ search_stats.get('extraction_time', 0) }}s</li>
+                        <li>Busca: {{ search_stats.get('search_time', 0) }}s</li>
+                        <li><strong>Total: {{ (search_stats.get('download_time', 0) + search_stats.get('extraction_time', 0) + search_stats.get('search_time', 0))|round(2) }}s</strong></li>
+                    </ul>
+                </div>
+            {% else %}
+                <div style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 40px;">
+                    📊 Faça uma busca para ver as estatísticas de processamento
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="card">
             <h2>📧 Gerenciar Emails</h2>
 
             <form method="post">
@@ -818,7 +936,7 @@ def home():
                 else:
                     try:
                         # Perform real search with the provided term
-                        matches = find_matches_vercel([search_term])
+                        matches, search_stats = find_matches_vercel([search_term])
                         if matches:
                             # Clean HTML from summaries and snippets
                             for result in matches:
@@ -828,11 +946,15 @@ def home():
                                 result['summary'] = f'Documento oficial que trata sobre {search_term}, estabelecendo diretrizes e procedimentos relacionados ao tema.'
 
                             search_results = matches
-                            message = f"Encontrados {len(matches)} artigos reais para '{search_term}'."
+                            message = f"Encontrados {len(matches)} artigos reais para '{search_term}' em {search_stats.get('xml_files_processed', 0)} arquivos XML processados."
                         else:
-                            message = f"Nenhum artigo encontrado para o termo '{search_term}'."
+                            if search_stats.get('xml_files_processed', 0) > 0:
+                                message = f"Nenhum artigo encontrado para o termo '{search_term}' (Processados {search_stats.get('xml_files_processed', 0)} arquivos XML)."
+                            else:
+                                message = f"Nenhum artigo encontrado para o termo '{search_term}'."
                     except Exception as e:
                         message = f"Erro na busca: {str(e)}"
+                        search_stats = {}
                         # Fallback to demo if real search fails
                         try:
                             matches = search_dou_demo(search_term)
@@ -887,7 +1009,8 @@ def home():
                                     results=search_results,
                                     search_term=search_term,
                                     use_ai=use_ai,
-                                    emails=list(current_emails))
+                                    emails=list(current_emails),
+                                    search_stats=search_stats if 'search_stats' in locals() else {})
     
     except Exception as e:
         # Em caso de erro, retornar uma página simples
