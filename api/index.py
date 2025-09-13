@@ -119,8 +119,8 @@ search_terms_storage = {}
 INLABS_EMAIL = os.getenv('INLABS_EMAIL', 'educmaia@gmail.com')
 INLABS_PASSWORD = os.getenv('INLABS_PASSWORD', 'maia2807')
 
-# DOU sections
-DEFAULT_SECTIONS = "DO1 DO1E"
+# DOU sections - Start with just DO1 to test
+DEFAULT_SECTIONS = "DO1"
 URL_LOGIN = "https://inlabs.in.gov.br/logar.php"
 URL_DOWNLOAD = "https://inlabs.in.gov.br/index.php?p="
 
@@ -134,26 +134,45 @@ def clean_html(text):
     clean = re.sub(r'\s+', ' ', clean).strip()
     return clean
 
+def test_inlabs_connectivity():
+    """Test basic connectivity to INLABS."""
+    try:
+        print("[DEBUG] Testing INLABS connectivity...")
+        response = requests.get("https://inlabs.in.gov.br/", timeout=10)
+        print(f"[DEBUG] INLABS homepage status: {response.status_code}")
+        return response.status_code == 200
+    except Exception as e:
+        print(f"[ERROR] INLABS connectivity test failed: {e}")
+        return False
+
 def create_inlabs_session():
     """Create and login to INLABS session."""
+    # First test connectivity
+    if not test_inlabs_connectivity():
+        raise ValueError("Cannot connect to INLABS - network issue or site down")
+
     print(f"[DEBUG] Attempting login with email: {INLABS_EMAIL}")
     payload = {"email": INLABS_EMAIL, "password": INLABS_PASSWORD}
     headers = {
         "Content-Type": "application/x-www-form-urlencoded",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
     session = requests.Session()
     try:
         print(f"[DEBUG] Making POST request to: {URL_LOGIN}")
         response = session.post(URL_LOGIN, data=payload, headers=headers, timeout=30)
         print(f"[DEBUG] Login response status: {response.status_code}")
+        print(f"[DEBUG] Response headers: {dict(response.headers)}")
         print(f"[DEBUG] Response cookies: {dict(session.cookies)}")
 
         if session.cookies.get('inlabs_session_cookie'):
-            print("[DEBUG] INLABS login successful.")
+            print("[DEBUG] ✅ INLABS login successful.")
             return session
         else:
-            print(f"[DEBUG] Login failed. Response content: {response.text[:200]}...")
+            print(f"[DEBUG] ❌ Login failed. Response content preview:")
+            content_preview = response.text[:500]
+            print(f"[DEBUG] {content_preview}")
             raise ValueError("Login failed: No session cookie obtained.")
     except Exception as e:
         print(f"[ERROR] Login error: {e}")
@@ -178,16 +197,24 @@ def download_dou_xml_vercel(sections=None):
         dia = today.strftime("%d")
         data_completa = f"{ano}-{mes}-{dia}"
 
+        print(f"[DEBUG] Attempting to download DOU for date: {data_completa}")
+        print(f"[DEBUG] Sections to download: {sections}")
+        print(f"[DEBUG] Session cookie exists: {bool(cookie)}")
+        print(f"[DEBUG] Cookie length: {len(cookie) if cookie else 0} chars")
+
         downloaded_data = {}
 
         for dou_secao in sections.split():
-            print(f"Downloading {data_completa}-{dou_secao}.zip...")
+            print(f"[DEBUG] Downloading {data_completa}-{dou_secao}.zip...")
             url_arquivo = f"{URL_DOWNLOAD}{data_completa}&dl={data_completa}-{dou_secao}.zip"
+            print(f"[DEBUG] Full download URL: {url_arquivo}")
             cabecalho_arquivo = {
                 'Cookie': f'inlabs_session_cookie={cookie}',
                 'origem': '736372697074'
             }
-            response = session.get(url_arquivo, headers=cabecalho_arquivo)
+            print(f"[DEBUG] Headers: {cabecalho_arquivo}")
+            print(f"[DEBUG] Making GET request to INLABS...")
+            response = session.get(url_arquivo, headers=cabecalho_arquivo, timeout=60)
 
             if response.status_code == 200:
                 print(f"[DEBUG] Response for {dou_secao}: {response.status_code}, Content-Length: {len(response.content)}")
@@ -197,19 +224,31 @@ def download_dou_xml_vercel(sections=None):
                 # Check if it's actually a ZIP file
                 if len(response.content) > 4:
                     zip_signature = response.content[:4]
+                    print(f"[DEBUG] ZIP signature check for {dou_secao}: {zip_signature} (should start with PK)")
+
                     if zip_signature == b'PK\x03\x04' or zip_signature == b'PK\x05\x06' or zip_signature == b'PK\x07\x08':
                         downloaded_data[dou_secao] = response.content
-                        print(f"[DEBUG] Downloaded valid ZIP: {data_completa}-{dou_secao}.zip")
+                        print(f"[DEBUG] ✅ Downloaded valid ZIP: {data_completa}-{dou_secao}.zip ({len(response.content)} bytes)")
                     else:
-                        print(f"[ERROR] Downloaded content for {dou_secao} is not a valid ZIP file. Signature: {zip_signature}")
-                        # Save first 500 chars to debug
+                        print(f"[ERROR] ❌ Downloaded content for {dou_secao} is NOT a valid ZIP file!")
+                        print(f"[ERROR] Expected: PK signature (50 4B), Got: {zip_signature}")
+                        print(f"[ERROR] This suggests INLABS returned an error page instead of a ZIP file")
+
+                        # Show first 1000 chars to debug what we actually got
                         try:
-                            content_preview = response.content[:500].decode('utf-8', errors='ignore')
-                            print(f"[DEBUG] Content preview: {content_preview}")
+                            content_preview = response.content[:1000].decode('utf-8', errors='ignore')
+                            print(f"[DEBUG] ===== ACTUAL CONTENT RECEIVED =====")
+                            print(f"[DEBUG] {content_preview}")
+                            print(f"[DEBUG] ===== END CONTENT =====")
+
+                            # Check if it's an HTML error page
+                            if '<html' in content_preview.lower() or '<!doctype' in content_preview.lower():
+                                print(f"[ERROR] 🚨 INLABS returned an HTML page instead of ZIP! Likely login failed or access denied.")
                         except:
-                            print(f"[DEBUG] Cannot decode content as text")
+                            print(f"[DEBUG] Cannot decode content as text - binary data: {response.content[:50]}")
                 else:
                     print(f"[ERROR] Downloaded content for {dou_secao} is too small: {len(response.content)} bytes")
+                    print(f"[ERROR] This indicates no content was downloaded or server returned empty response")
             elif response.status_code == 404:
                 print(f"[DEBUG] Not found: {data_completa}-{dou_secao}.zip")
             else:
