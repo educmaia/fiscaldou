@@ -168,6 +168,19 @@ def create_inlabs_session():
 
         if session.cookies.get('inlabs_session_cookie'):
             print("[DEBUG] ✅ INLABS login successful.")
+
+            # Test access to main interface after login
+            print("[DEBUG] Testing access to main INLABS interface...")
+            test_url = "https://inlabs.in.gov.br/index.php"
+            test_response = session.get(test_url, timeout=30)
+            print(f"[DEBUG] Main interface status: {test_response.status_code}")
+
+            if "logout" in test_response.text.lower() or "sair" in test_response.text.lower():
+                print("[DEBUG] ✅ Successfully logged into INLABS interface")
+            else:
+                print("[DEBUG] ⚠️ Warning: May not be properly logged in to INLABS interface")
+                print(f"[DEBUG] Interface preview: {test_response.text[:300]}")
+
             return session
         else:
             print(f"[DEBUG] ❌ Login failed. Response content preview:")
@@ -208,13 +221,23 @@ def download_dou_xml_vercel(sections=None):
             print(f"[DEBUG] Downloading {data_completa}-{dou_secao}.zip...")
             url_arquivo = f"{URL_DOWNLOAD}{data_completa}&dl={data_completa}-{dou_secao}.zip"
             print(f"[DEBUG] Full download URL: {url_arquivo}")
+            # Try with all session cookies, not just the session cookie
+            all_cookies = '; '.join([f'{name}={value}' for name, value in session.cookies.items()])
+            print(f"[DEBUG] All session cookies: {all_cookies}")
+
             cabecalho_arquivo = {
-                'Cookie': f'inlabs_session_cookie={cookie}',
-                'origem': '736372697074'
+                'Cookie': all_cookies,
+                'origem': '736372697074',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Referer': 'https://inlabs.in.gov.br/index.php',
+                'Accept': 'application/zip,*/*'
             }
             print(f"[DEBUG] Headers: {cabecalho_arquivo}")
             print(f"[DEBUG] Making GET request to INLABS...")
-            response = session.get(url_arquivo, headers=cabecalho_arquivo, timeout=60)
+
+            # Also try the request with the session directly instead of manual cookies
+            print(f"[DEBUG] Attempting direct session.get() first...")
+            response = session.get(url_arquivo, timeout=60)
 
             if response.status_code == 200:
                 print(f"[DEBUG] Response for {dou_secao}: {response.status_code}, Content-Length: {len(response.content)}")
@@ -243,7 +266,19 @@ def download_dou_xml_vercel(sections=None):
 
                             # Check if it's an HTML error page
                             if '<html' in content_preview.lower() or '<!doctype' in content_preview.lower():
-                                print(f"[ERROR] 🚨 INLABS returned an HTML page instead of ZIP! Likely login failed or access denied.")
+                                print(f"[ERROR] 🚨 INLABS returned an HTML page instead of ZIP! Trying alternative URLs...")
+
+                                # Try alternative download URL format (direct file access)
+                                alt_url = f"https://inlabs.in.gov.br/files/{data_completa}-{dou_secao}.zip"
+                                print(f"[DEBUG] Trying alternative URL: {alt_url}")
+                                alt_response = session.get(alt_url, timeout=30)
+                                print(f"[DEBUG] Alt URL status: {alt_response.status_code}")
+
+                                if alt_response.status_code == 200 and len(alt_response.content) > 4:
+                                    alt_signature = alt_response.content[:4]
+                                    if alt_signature == b'PK\x03\x04':
+                                        print(f"[DEBUG] ✅ Found valid ZIP with alternative URL!")
+                                        response = alt_response  # Use the alternative response
                         except:
                             print(f"[DEBUG] Cannot decode content as text - binary data: {response.content[:50]}")
                 else:
