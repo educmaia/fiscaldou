@@ -4,6 +4,8 @@ Aplicação web para monitoramento e busca automatizada no Diário Oficial da Un
 
 🔗 **Deploy no Vercel:** [https://vercel.com/joao-silvas-projects-c4cdd3fc/fiscaldou](https://vercel.com/joao-silvas-projects-c4cdd3fc/fiscaldou)
 
+✅ **Status:** Deploy automático configurado - última atualização: 13/09/2025
+
 ## Configuração Inicial
 
 1. **Instale as dependências:**
