@@ -262,20 +262,26 @@ HTML_TEMPLATE = '''
     <title>DOU Notifier - Cadastro e Busca</title>
     <style>
         :root {
-            --primary-color: #2563eb;
-            --primary-hover: #1d4ed8;
-            --secondary-color: #64748b;
-            --success-color: #10b981;
-            --error-color: #ef4444;
-            --warning-color: #f59e0b;
-            --background: #f8fafc;
+            --primary-color: #0ea5e9;
+            --primary-hover: #0284c7;
+            --secondary-color: #6b7280;
+            --success-color: #059669;
+            --error-color: #dc2626;
+            --warning-color: #d97706;
+            --background: #ffffff;
             --card-bg: #ffffff;
-            --text-primary: #1e293b;
-            --text-secondary: #64748b;
-            --border: #e2e8f0;
-            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            --shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-            --radius: 8px;
+            --text-primary: #111827;
+            --text-secondary: #6b7280;
+            --border: #f3f4f6;
+            --border-light: #f9fafb;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            --shadow-hover: 0 10px 20px -5px rgba(0, 0, 0, 0.12), 0 4px 8px -2px rgba(0, 0, 0, 0.08);
+            --radius: 12px;
+            --radius-sm: 6px;
             --transition: all 0.2s ease-in-out;
         }
 
@@ -287,7 +293,7 @@ HTML_TEMPLATE = '''
 
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, var(--background) 0%, #e2e8f0 100%);
+            background: #fafafa;
             color: var(--text-primary);
             line-height: 1.6;
             min-height: 100vh;
@@ -325,15 +331,15 @@ HTML_TEMPLATE = '''
         .card {
             background: var(--card-bg);
             border-radius: var(--radius);
-            box-shadow: var(--shadow);
-            padding: 30px;
+            box-shadow: var(--shadow-md);
+            padding: 32px;
             transition: var(--transition);
             border: 1px solid var(--border);
         }
 
         .card:hover {
-            box-shadow: var(--shadow-hover);
-            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-3px);
         }
 
         .card h2 {
@@ -358,18 +364,19 @@ HTML_TEMPLATE = '''
 
         input[type="email"], input[type="text"] {
             width: 100%;
-            padding: 12px 16px;
-            border: 2px solid var(--border);
+            padding: 14px 18px;
+            border: 1px solid var(--border);
             border-radius: var(--radius);
             font-size: 1rem;
             transition: var(--transition);
             background: var(--background);
+            box-shadow: var(--shadow-sm);
         }
 
         input[type="email"]:focus, input[type="text"]:focus {
             outline: none;
             border-color: var(--primary-color);
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+            box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1), var(--shadow);
         }
 
         .suggestions-panel {
@@ -396,10 +403,10 @@ HTML_TEMPLATE = '''
 
 
         button {
-            background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+            background: var(--primary-color);
             color: white;
             border: none;
-            padding: 12px 24px;
+            padding: 14px 24px;
             border-radius: var(--radius);
             font-size: 1rem;
             font-weight: 600;
@@ -407,15 +414,18 @@ HTML_TEMPLATE = '''
             transition: var(--transition);
             width: 100%;
             margin-top: 10px;
+            box-shadow: var(--shadow-sm);
         }
 
         button:hover {
+            background: var(--primary-hover);
             transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+            box-shadow: var(--shadow-md);
         }
 
         button:active {
             transform: translateY(0);
+            box-shadow: var(--shadow-sm);
         }
 
         .message {
@@ -447,7 +457,7 @@ HTML_TEMPLATE = '''
 
         .email-list li {
             background: var(--background);
-            padding: 12px 16px;
+            padding: 14px 18px;
             margin-bottom: 8px;
             border-radius: var(--radius);
             border: 1px solid var(--border);
@@ -455,10 +465,12 @@ HTML_TEMPLATE = '''
             justify-content: space-between;
             align-items: center;
             transition: var(--transition);
+            box-shadow: var(--shadow-sm);
         }
 
         .email-list li:hover {
-            background: #e2e8f0;
+            background: var(--border-light);
+            box-shadow: var(--shadow);
         }
 
         .email-list li .email {
@@ -488,13 +500,15 @@ HTML_TEMPLATE = '''
             background: var(--background);
             border: 1px solid var(--border);
             border-radius: var(--radius);
-            padding: 20px;
+            padding: 24px;
             margin-bottom: 20px;
             transition: var(--transition);
+            box-shadow: var(--shadow-sm);
         }
 
         .result-item:hover {
-            box-shadow: var(--shadow);
+            box-shadow: var(--shadow-md);
+            transform: translateY(-1px);
         }
 
         .result-item h4 {
@@ -540,14 +554,15 @@ HTML_TEMPLATE = '''
         .modal-content {
             background-color: var(--card-bg);
             margin: 5% auto;
-            padding: 30px;
+            padding: 32px;
             border-radius: var(--radius);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            box-shadow: var(--shadow-xl);
             width: 90%;
             max-width: 800px;
             max-height: 80vh;
             overflow-y: auto;
             position: relative;
+            border: 1px solid var(--border);
         }
 
         .close {

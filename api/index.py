@@ -1,11 +1,83 @@
 from flask import Flask, request, render_template_string
 import os
 import re
+import requests
+import json
 from datetime import datetime
 
 app = Flask(__name__)
 
-# Armazenamento temporário em memória (substitui SQLite)
+# Edge Config configuration
+EDGE_CONFIG_ID = os.getenv('EDGE_CONFIG')
+VERCEL_TOKEN = os.getenv('VERCEL_TOKEN')
+
+def get_edge_config_url():
+    """Get Edge Config API URL"""
+    if EDGE_CONFIG_ID:
+        return f"https://api.vercel.com/v1/edge-config/{EDGE_CONFIG_ID}/items"
+    return None
+
+def get_from_edge_config(key):
+    """Get value from Edge Config"""
+    try:
+        if not EDGE_CONFIG_ID:
+            return None
+            
+        # Para leitura, usamos a URL de leitura direta
+        url = f"https://edge-config.vercel.com/{EDGE_CONFIG_ID}"
+        headers = {
+            'Authorization': f'Bearer {VERCEL_TOKEN}' if VERCEL_TOKEN else ''
+        }
+        
+        response = requests.get(f"{url}/{key}", headers=headers, timeout=5)
+        if response.status_code == 200:
+            return response.json()
+        return None
+    except Exception as e:
+        print(f"Error reading from Edge Config: {e}")
+        return None
+
+def set_edge_config_item(key, value):
+    """Set value in Edge Config"""
+    try:
+        if not EDGE_CONFIG_ID or not VERCEL_TOKEN:
+            return False
+            
+        url = get_edge_config_url()
+        headers = {
+            'Authorization': f'Bearer {VERCEL_TOKEN}',
+            'Content-Type': 'application/json'
+        }
+        
+        data = {
+            'items': [
+                {
+                    'operation': 'upsert',
+                    'key': key,
+                    'value': value
+                }
+            ]
+        }
+        
+        response = requests.patch(url, headers=headers, json=data, timeout=10)
+        return response.status_code == 200
+    except Exception as e:
+        print(f"Error writing to Edge Config: {e}")
+        return False
+
+def get_emails_from_edge_config():
+    """Get emails list from Edge Config"""
+    emails = get_from_edge_config('emails')
+    if emails and isinstance(emails, list):
+        return set(emails)
+    return set()
+
+def save_emails_to_edge_config(emails_set):
+    """Save emails list to Edge Config"""
+    emails_list = list(emails_set)
+    return set_edge_config_item('emails', emails_list)
+
+# Fallback storage (usado se Edge Config não estiver disponível)
 emails_storage = set()
 search_terms_storage = {}
 
@@ -404,9 +476,6 @@ HTML_TEMPLATE = '''
     <div class="header">
         <h1>DOU Notifier</h1>
         <p>Gerencie notificações e busque no Diário Oficial da União</p>
-        <div class="serverless-info">
-            ⚡ Versão Serverless - Deploy em {{ deploy_time }}
-        </div>
     </div>
 
     {% if message %}
@@ -512,15 +581,13 @@ HTML_TEMPLATE = '''
             </div>
 
             <div style="margin-top: 30px; padding: 15px; background: var(--background); border-radius: var(--radius); border: 1px solid var(--border);">
-                <h4>ℹ️ Informações da Versão Serverless</h4>
+                <h4>ℹ️ Informações do Sistema</h4>
                 <ul style="margin: 10px 0; padding-left: 20px; color: var(--text-secondary);">
-                    <li>OpenAI: {{ '✅ Configurada' if openai_key else '❌ Não configurada' }}</li>
-                    <li>SMTP: {{ '✅ Configurado' if smtp_server else '❌ Não configurado' }}</li>
-                    <li>Armazenamento: Temporário (reinicia a cada deploy)</li>
-                    <li>Funcionalidades: Busca demonstrativa</li>
+                    <li>Status: {{ '🟢 Online' }}</li>
+                    <li>Funcionalidade: Sistema de monitoramento DOU</li>
                 </ul>
                 <p style="text-align: center; margin-top: 15px;">
-                    <a href="https://github.com/educmaia/fiscaldou" target="_blank" 
+                    <a href="https://github.com/educmaia/fiscaldou" target="_blank"
                        style="color: var(--primary-color); text-decoration: none; font-weight: 500;">
                         📂 Ver código fonte completo no GitHub
                     </a>
@@ -546,6 +613,15 @@ def home():
         smtp_server = os.getenv('SMTP_SERVER', '')
         smtp_user = os.getenv('SMTP_USER', '')
         smtp_pass = bool(os.getenv('SMTP_PASS'))
+        edge_config_available = bool(EDGE_CONFIG_ID)
+        
+        # Carregar emails do Edge Config ou usar fallback
+        if edge_config_available:
+            current_emails = get_emails_from_edge_config()
+            if current_emails is None:
+                current_emails = emails_storage  # Fallback
+        else:
+            current_emails = emails_storage
         
         if request.method == 'POST':
             if 'search_term' in request.form:
@@ -574,34 +650,45 @@ def home():
                 
                 if action in ['register', 'unregister'] and email:
                     if action == 'register':
-                        if email in emails_storage:
+                        if email in current_emails:
                             message = f'Email {email} já está cadastrado.'
                         else:
-                            emails_storage.add(email)
-                            message = f'Email {email} cadastrado com sucesso!'
+                            current_emails.add(email)
+                            # Salvar no Edge Config ou fallback
+                            if edge_config_available:
+                                if save_emails_to_edge_config(current_emails):
+                                    message = f'Email {email} cadastrado com sucesso! (Edge Config)'
+                                else:
+                                    emails_storage.add(email)  # Fallback
+                                    message = f'Email {email} cadastrado com sucesso! (Fallback)'
+                            else:
+                                emails_storage.add(email)
+                                message = f'Email {email} cadastrado com sucesso! (Memória)'
                     
                     elif action == 'unregister':
-                        if email in emails_storage:
-                            emails_storage.remove(email)
-                            message = f'Email {email} removido com sucesso!'
+                        if email in current_emails:
+                            current_emails.remove(email)
+                            # Salvar no Edge Config ou fallback
+                            if edge_config_available:
+                                if save_emails_to_edge_config(current_emails):
+                                    message = f'Email {email} removido com sucesso! (Edge Config)'
+                                else:
+                                    emails_storage.discard(email)  # Fallback
+                                    message = f'Email {email} removido com sucesso! (Fallback)'
+                            else:
+                                emails_storage.discard(email)
+                                message = f'Email {email} removido com sucesso! (Memória)'
                         else:
                             message = f'Email {email} não encontrado.'
                 else:
                     message = "Por favor, forneça um email válido."
         
-        deploy_time = datetime.now().strftime('%d/%m/%Y às %H:%M:%S UTC')
-        
-        return render_template_string(HTML_TEMPLATE, 
-                                    openai_key=openai_key,
-                                    smtp_server=smtp_server,
-                                    smtp_user=smtp_user,
-                                    smtp_pass=smtp_pass,
-                                    deploy_time=deploy_time,
+        return render_template_string(HTML_TEMPLATE,
                                     message=message,
                                     results=search_results,
                                     search_term=search_term,
                                     use_ai=use_ai,
-                                    emails=list(emails_storage))
+                                    emails=list(current_emails))
     
     except Exception as e:
         # Em caso de erro, retornar uma página simples
