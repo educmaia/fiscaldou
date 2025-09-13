@@ -31,20 +31,25 @@ def find_matches(search_terms=None):
             logger.info("No search terms in database.")
             return []
     try:
-        # Download today's XML ZIPs
-        logger.info("Starting download for today's DOU XMLs.")
-        zip_files = download_dou_xml()
+        # Download today's XML ZIPs with fallback to previous days
+        print("Iniciando busca por DOU (com fallback automático se necessário)...")
+        logger.info("Starting download for DOU XMLs with fallback to previous days if needed.")
+        zip_files = download_dou_xml(max_fallback_days=2)
         if not zip_files:
-            logger.warning("No files downloaded today.")
+            print("ERRO: Nenhum DOU encontrado nos últimos dias.")
+            logger.warning("No valid DOU files found after trying current and previous days.")
             return []
 
         # Extract articles
+        print("Extraindo artigos dos arquivos DOU...")
         logger.info("Starting extraction of articles.")
         articles = extract_articles(zip_files)
         if not articles:
+            print("ERRO: Nenhum artigo extraído dos arquivos.")
             logger.warning("No articles extracted.")
             return []
 
+        print(f"Pesquisando termos em {len(articles)} artigos...")
         logger.info(f"Searching {len(articles)} articles for terms.")
         matches = []
         for article in articles:
@@ -74,8 +79,11 @@ def find_matches(search_terms=None):
                 logger.info(
                     f"Match found in {article['filename']} ({article['section']}): {matched_terms}")
 
-        logger.info(
-            f"Search completed. Found {len(matches)} matching articles.")
+        if matches:
+            print(f"SUCCESS: Busca concluída! Encontradas {len(matches)} correspondências.")
+        else:
+            print("INFO: Busca concluída. Nenhuma correspondência encontrada.")
+        logger.info(f"Search completed. Found {len(matches)} matching articles.")
         return matches
     except Exception as e:
         logger.error(f"Error in find_matches: {e}")
