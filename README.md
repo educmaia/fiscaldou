@@ -1,6 +1,8 @@
-# DOU Notifier
+# FiscalDOU - Monitoramento do Diário Oficial da União
 
-Programa para busca diária no Diário Oficial da União (DOU) via INLABS, usando os termos especificados. Gera resumos com OpenAI, cadastra emails via interface web Flask, envia notificações por email e executa em horário programado.
+Aplicação web para monitoramento e busca automatizada no Diário Oficial da União (DOU). Sistema completo com interface web Flask para cadastro de emails, busca inteligente por termos específicos, geração de resumos com IA e notificações automáticas por email.
+
+🔗 **Deploy no Vercel:** [https://vercel.com/joao-silvas-projects-c4cdd3fc/fiscaldou](https://vercel.com/joao-silvas-projects-c4cdd3fc/fiscaldou)
 
 ## Configuração Inicial
 
@@ -57,8 +59,37 @@ Programa para busca diária no Diário Oficial da União (DOU) via INLABS, usand
 python -c "from search import find_matches; from summarize import summarize_matches; from notify import send_notifications; m = find_matches(); if m: s = summarize_matches(m); send_notifications(s)"
 ```
 
+## Deploy no Vercel
+
+### Configuração das Variáveis de Ambiente
+
+No painel do Vercel, configure as seguintes variáveis de ambiente:
+
+```
+OPENAI_API_KEY=sua_chave_openai_aqui
+SMTP_SERVER=smtp.gmail.com  
+SMTP_PORT=465
+SMTP_USER=seu_email@gmail.com
+SMTP_PASS=sua_senha_app_gmail
+```
+
+### Conectar Repositório GitHub
+
+1. Acesse [Vercel Dashboard](https://vercel.com/dashboard)
+2. Clique em "New Project"
+3. Conecte com GitHub e selecione o repositório `fiscaldou`
+4. Configure as variáveis de ambiente
+5. Deploy automático a cada push na branch `main`
+
+### Estrutura de Arquivos para Vercel
+
+- `vercel.json` - Configuração do runtime Python
+- `requirements.txt` - Dependências Python
+- `app.py` - Aplicação Flask principal
+
 ## Notas
 
-- Credenciais hardcoded por simplicidade (atualize o código).
-- Logs em console e arquivos para depuração.
-- Para produção, use um servidor (ex: Gunicorn para Flask, systemd para scheduler).
+- Variáveis de ambiente gerenciadas pelo Vercel
+- Logs disponíveis no painel do Vercel
+- Deploy automático via GitHub integration
+- Banco SQLite local (não persistente entre deployments)
