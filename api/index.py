@@ -5,7 +5,7 @@ import requests
 import json
 import zipfile
 import xml.etree.ElementTree as ET
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from pathlib import Path
 import tempfile
 import io
@@ -193,8 +193,50 @@ def create_inlabs_session():
         print(f"[ERROR] Login traceback: {traceback.format_exc()}")
         raise
 
-def download_dou_xml_vercel(sections=None):
-    """Download DOU XML ZIPs for today - Vercel version."""
+def is_valid_zip_content(content):
+    """Check if content is a valid ZIP file by checking its signature."""
+    try:
+        if len(content) < 4:
+            return False
+        signature = content[:4]
+        return signature.startswith(b'PK')
+    except Exception:
+        return False
+
+def try_download_for_date_vercel(session, data_completa, sections):
+    """
+    Try to download DOU files for a specific date - Vercel version.
+
+    Returns:
+        dict: Successfully downloaded ZIP content by section, empty if none found.
+    """
+    downloaded_data = {}
+
+    for dou_secao in sections.split():
+        print(f"[DEBUG] Downloading {data_completa}-{dou_secao}.zip...")
+        url_arquivo = f"{URL_DOWNLOAD}{data_completa}&dl={data_completa}-{dou_secao}.zip"
+
+        # Use session directly for better cookie handling
+        response = session.get(url_arquivo, timeout=60)
+
+        if response.status_code == 200:
+            # Check if content is actually a ZIP file
+            if is_valid_zip_content(response.content):
+                downloaded_data[dou_secao] = response.content
+                print(f"[DEBUG] Downloaded valid ZIP: {data_completa}-{dou_secao}.zip ({len(response.content)} bytes)")
+            else:
+                print(f"[DEBUG] Downloaded content for {dou_secao} is NOT a valid ZIP (got HTML page)")
+                # Don't save invalid files for this date
+        elif response.status_code == 404:
+            print(f"[DEBUG] Not found: {data_completa}-{dou_secao}.zip")
+        else:
+            print(f"[DEBUG] Error downloading {dou_secao}: status {response.status_code}")
+
+    print(f"[DEBUG] Download attempt for {data_completa} completed. Valid files: {len(downloaded_data)}")
+    return downloaded_data
+
+def download_dou_xml_vercel(sections=None, max_fallback_days=2):
+    """Download DOU XML ZIPs with fallback to previous days - Vercel version."""
     if sections is None:
         sections = DEFAULT_SECTIONS
 
@@ -204,96 +246,34 @@ def download_dou_xml_vercel(sections=None):
         if not cookie:
             raise ValueError("No cookie after login.")
 
-        today = date.today()
-        ano = today.strftime("%Y")
-        mes = today.strftime("%m")
-        dia = today.strftime("%d")
-        data_completa = f"{ano}-{mes}-{dia}"
+        # Determine starting date (today)
+        target_date = date.today()
 
-        print(f"[DEBUG] Attempting to download DOU for date: {data_completa}")
-        print(f"[DEBUG] Sections to download: {sections}")
-        print(f"[DEBUG] Session cookie exists: {bool(cookie)}")
-        print(f"[DEBUG] Cookie length: {len(cookie) if cookie else 0} chars")
+        # Try downloading for up to max_fallback_days
+        for days_back in range(max_fallback_days + 1):
+            current_date = target_date - timedelta(days=days_back)
+            data_completa = current_date.strftime("%Y-%m-%d")
+            data_formatada = current_date.strftime("%d/%m/%Y")
 
-        downloaded_data = {}
-
-        for dou_secao in sections.split():
-            print(f"[DEBUG] Downloading {data_completa}-{dou_secao}.zip...")
-            url_arquivo = f"{URL_DOWNLOAD}{data_completa}&dl={data_completa}-{dou_secao}.zip"
-            print(f"[DEBUG] Full download URL: {url_arquivo}")
-            # Try with all session cookies, not just the session cookie
-            all_cookies = '; '.join([f'{name}={value}' for name, value in session.cookies.items()])
-            print(f"[DEBUG] All session cookies: {all_cookies}")
-
-            cabecalho_arquivo = {
-                'Cookie': all_cookies,
-                'origem': '736372697074',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Referer': 'https://inlabs.in.gov.br/index.php',
-                'Accept': 'application/zip,*/*'
-            }
-            print(f"[DEBUG] Headers: {cabecalho_arquivo}")
-            print(f"[DEBUG] Making GET request to INLABS...")
-
-            # Also try the request with the session directly instead of manual cookies
-            print(f"[DEBUG] Attempting direct session.get() first...")
-            response = session.get(url_arquivo, timeout=60)
-
-            if response.status_code == 200:
-                print(f"[DEBUG] Response for {dou_secao}: {response.status_code}, Content-Length: {len(response.content)}")
-                print(f"[DEBUG] Content-Type: {response.headers.get('content-type', 'unknown')}")
-                print(f"[DEBUG] First 50 bytes: {response.content[:50]}")
-
-                # Check if it's actually a ZIP file
-                if len(response.content) > 4:
-                    zip_signature = response.content[:4]
-                    print(f"[DEBUG] ZIP signature check for {dou_secao}: {zip_signature} (should start with PK)")
-
-                    if zip_signature == b'PK\x03\x04' or zip_signature == b'PK\x05\x06' or zip_signature == b'PK\x07\x08':
-                        downloaded_data[dou_secao] = response.content
-                        print(f"[DEBUG] ✅ Downloaded valid ZIP: {data_completa}-{dou_secao}.zip ({len(response.content)} bytes)")
-                    else:
-                        print(f"[ERROR] ❌ Downloaded content for {dou_secao} is NOT a valid ZIP file!")
-                        print(f"[ERROR] Expected: PK signature (50 4B), Got: {zip_signature}")
-                        print(f"[ERROR] This suggests INLABS returned an error page instead of a ZIP file")
-
-                        # Show first 1000 chars to debug what we actually got
-                        try:
-                            content_preview = response.content[:1000].decode('utf-8', errors='ignore')
-                            print(f"[DEBUG] ===== ACTUAL CONTENT RECEIVED =====")
-                            print(f"[DEBUG] {content_preview}")
-                            print(f"[DEBUG] ===== END CONTENT =====")
-
-                            # Check if it's an HTML error page
-                            if '<html' in content_preview.lower() or '<!doctype' in content_preview.lower():
-                                print(f"[ERROR] 🚨 INLABS returned an HTML page instead of ZIP! Trying alternative URLs...")
-
-                                # Try alternative download URL format (direct file access)
-                                alt_url = f"https://inlabs.in.gov.br/files/{data_completa}-{dou_secao}.zip"
-                                print(f"[DEBUG] Trying alternative URL: {alt_url}")
-                                alt_response = session.get(alt_url, timeout=30)
-                                print(f"[DEBUG] Alt URL status: {alt_response.status_code}")
-
-                                if alt_response.status_code == 200 and len(alt_response.content) > 4:
-                                    alt_signature = alt_response.content[:4]
-                                    if alt_signature == b'PK\x03\x04':
-                                        print(f"[DEBUG] ✅ Found valid ZIP with alternative URL!")
-                                        response = alt_response  # Use the alternative response
-                        except:
-                            print(f"[DEBUG] Cannot decode content as text - binary data: {response.content[:50]}")
-                else:
-                    print(f"[ERROR] Downloaded content for {dou_secao} is too small: {len(response.content)} bytes")
-                    print(f"[ERROR] This indicates no content was downloaded or server returned empty response")
-            elif response.status_code == 404:
-                print(f"[DEBUG] Not found: {data_completa}-{dou_secao}.zip")
+            if days_back == 0:
+                print(f"[INFO] Verificando DOU de hoje ({data_formatada})...")
             else:
-                print(f"[ERROR] Error downloading {dou_secao}: status {response.status_code}")
-                print(f"[ERROR] Response content: {response.content[:200]}")
+                print(f"[INFO] DOU de hoje não disponível. Verificando {days_back} dia(s) atrás ({data_formatada})...")
 
+            downloaded_data = try_download_for_date_vercel(session, data_completa, sections)
+
+            if downloaded_data:
+                print(f"[SUCCESS] DOU encontrado para {data_formatada}! {len(downloaded_data)} arquivo(s) baixado(s).")
+                session.close()
+                return downloaded_data
+            else:
+                print(f"[WARNING] Nenhum DOU válido encontrado para {data_formatada}")
+
+        print(f"[ERROR] Nenhum DOU válido encontrado após verificar {max_fallback_days + 1} dias.")
         session.close()
-        return downloaded_data
+        return {}
     except Exception as e:
-        print(f"Error in download_dou_xml_vercel: {e}")
+        print(f"[ERROR] Error in download_dou_xml_vercel: {e}")
         if 'session' in locals():
             session.close()
         raise
