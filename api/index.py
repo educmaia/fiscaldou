@@ -81,294 +81,447 @@ def search_dou_demo(search_term):
     
     return filtered_results
 
-# Template HTML inline com funcionalidades completas
+# Template HTML com design original do DOU Notifier
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FiscalDOU - Monitoramento DOU</title>
+    <title>DOU Notifier - Serverless</title>
     <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            max-width: 1200px; 
-            margin: 0 auto; 
-            padding: 20px;
+        :root {
+            --primary-color: #2563eb;
+            --primary-hover: #1d4ed8;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --error-color: #ef4444;
+            --text-primary: #1f2937;
+            --text-secondary: #6b7280;
+            --background: #f8fafc;
+            --card-bg: #ffffff;
+            --border: #e5e7eb;
+            --radius: 12px;
+            --shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            --shadow-hover: 0 10px 25px rgba(0, 0, 0, 0.1);
+            --transition: all 0.2s ease-in-out;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-        }
-        .container {
-            background: white;
-            border-radius: 10px;
-            padding: 30px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-        }
-        h1 { 
-            color: #333; 
-            text-align: center;
-            margin-bottom: 30px;
-            font-size: 2.5em;
-        }
-        .section {
-            background: #f9f9f9;
-            border-radius: 8px;
             padding: 20px;
-            margin: 20px 0;
-            border-left: 4px solid #2196f3;
+            color: var(--text-primary);
         }
-        .form-group {
-            margin: 15px 0;
-        }
-        .form-group label {
-            display: block;
-            font-weight: bold;
-            margin-bottom: 5px;
-        }
-        .form-group input[type="text"], .form-group input[type="email"] {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 16px;
-        }
-        button {
-            background: #2196f3;
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
             color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-            margin: 5px;
         }
-        button:hover {
-            background: #1976d2;
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+            color: white;
         }
-        .danger { background: #f44336; }
-        .danger:hover { background: #d32f2f; }
-        
-        .message {
-            padding: 10px;
-            border-radius: 4px;
-            margin: 10px 0;
-            font-weight: bold;
+
+        .header p {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 1.1rem;
         }
-        .success { background: #e8f5e8; color: #2e7d32; border: 1px solid #4caf50; }
-        .error { background: #ffebee; color: #c62828; border: 1px solid #f44336; }
-        
-        .result {
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 15px;
-            margin: 15px 0;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            max-width: 1200px;
+            margin: 0 auto;
         }
-        .result h3 {
-            color: #1976d2;
-            margin: 0 0 10px 0;
+
+        .card {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 30px;
+            transition: var(--transition);
+            border: 1px solid var(--border);
         }
-        .snippets {
-            background: #f5f5f5;
-            padding: 10px;
-            border-radius: 4px;
-            margin: 10px 0;
+
+        .card:hover {
+            box-shadow: var(--shadow-hover);
+            transform: translateY(-2px);
         }
-        .snippet {
-            background: #fff;
-            padding: 8px;
-            margin: 5px 0;
-            border-left: 3px solid #2196f3;
-            border-radius: 3px;
+
+        .card h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: var(--text-primary);
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 10px;
         }
-        .summary {
-            font-style: italic;
-            color: #666;
-            background: #f0f8ff;
-            padding: 10px;
-            border-radius: 4px;
-            margin: 10px 0;
-        }
-        .nav-tabs {
-            display: flex;
-            border-bottom: 1px solid #ddd;
+
+        .form-group {
             margin-bottom: 20px;
         }
-        .nav-tab {
-            background: #f5f5f5;
-            border: none;
-            padding: 10px 20px;
-            cursor: pointer;
-            border-radius: 8px 8px 0 0;
-            margin-right: 5px;
-        }
-        .nav-tab.active {
-            background: #2196f3;
-            color: white;
-        }
-        .tab-content {
-            display: none;
-        }
-        .tab-content.active {
+
+        .form-group label {
             display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: var(--text-primary);
         }
+
+        input[type="email"], input[type="text"] {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid var(--border);
+            border-radius: var(--radius);
+            font-size: 1rem;
+            transition: var(--transition);
+            background: var(--background);
+        }
+
+        input[type="email"]:focus, input[type="text"]:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        .suggestion-chip {
+            display: inline-block;
+            background: var(--primary-color);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: var(--transition);
+            border: 2px solid var(--primary-color);
+            margin: 4px;
+        }
+
+        .suggestion-chip:hover {
+            background: var(--primary-hover);
+            border-color: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        button {
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: var(--radius);
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .message {
+            padding: 12px 16px;
+            border-radius: var(--radius);
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+
+        .message.success {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success-color);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .message.error {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--error-color);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
         .email-list {
-            max-height: 200px;
-            overflow-y: auto;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            padding: 10px;
+            margin-top: 20px;
         }
-        .email-item {
-            background: #f9f9f9;
-            padding: 8px;
-            margin: 5px 0;
-            border-radius: 4px;
+
+        .email-list ul {
+            list-style: none;
+        }
+
+        .email-list li {
+            background: var(--background);
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            transition: var(--transition);
+        }
+
+        .email-list li:hover {
+            background: #e2e8f0;
+        }
+
+        .email-list li .email {
+            font-weight: 500;
+        }
+
+        .email-list li .remove-btn {
+            background: var(--error-color);
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: var(--transition);
+            width: auto;
+            margin: 0;
+        }
+
+        .email-list li .remove-btn:hover {
+            background: #dc2626;
+        }
+
+        .results {
+            margin-top: 30px;
+        }
+
+        .result-item {
+            background: var(--background);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+            margin-bottom: 20px;
+            transition: var(--transition);
+            cursor: pointer;
+        }
+
+        .result-item:hover {
+            box-shadow: var(--shadow);
+            transform: translateY(-1px);
+        }
+
+        .result-item h4 {
+            color: var(--primary-color);
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+
+        .result-item p {
+            margin-bottom: 8px;
+            color: var(--text-secondary);
+        }
+
+        .snippet {
+            background: white;
+            padding: 10px;
+            border-left: 4px solid var(--primary-color);
+            margin: 8px 0;
+            font-style: italic;
+            border-radius: 0 var(--radius) var(--radius) 0;
+        }
+
+        .suggestions-panel {
+            margin-top: 15px;
+            padding: 15px;
+            background: var(--background);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .card {
+                padding: 20px;
+            }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .card, .result-item {
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        /* Configurações específicas para a versão serverless */
+        .serverless-info {
+            background: rgba(251, 191, 36, 0.1);
+            border: 1px solid rgba(251, 191, 36, 0.3);
+            border-radius: var(--radius);
+            padding: 15px;
+            margin-bottom: 20px;
+            color: #92400e;
+            font-weight: 500;
         }
     </style>
     <script>
-        function showTab(tabName) {
-            // Hide all tabs
-            const tabs = document.querySelectorAll('.tab-content');
-            tabs.forEach(tab => tab.classList.remove('active'));
-            
-            const buttons = document.querySelectorAll('.nav-tab');
-            buttons.forEach(btn => btn.classList.remove('active'));
-            
-            // Show selected tab
-            document.getElementById(tabName).classList.add('active');
-            document.querySelector(`button[onclick="showTab('${tabName}')"]`).classList.add('active');
+        function setTerm(term) {
+            document.getElementById('search_term').value = term;
+        }
+
+        function openModal(index) {
+            // Para versão serverless, apenas mostra um alert
+            alert('Funcionalidade de modal disponível na versão completa. Confira o código no GitHub!');
         }
     </script>
 </head>
 <body>
-    <div class="container">
-        <h1>🏛️ FiscalDOU</h1>
-        <h2 style="text-align: center; color: #666;">Sistema de Monitoramento do Diário Oficial da União</h2>
-        
-        {% if message %}
-            <div class="message {{ 'error' if 'Erro' in message or 'erro' in message else 'success' }}">
-                {{ message }}
-            </div>
-        {% endif %}
-
-        <div class="nav-tabs">
-            <button class="nav-tab active" onclick="showTab('search')">🔍 Buscar no DOU</button>
-            <button class="nav-tab" onclick="showTab('emails')">📧 Gerenciar Emails</button>
-            <button class="nav-tab" onclick="showTab('config')">⚙️ Configurações</button>
+    <div class="header">
+        <h1>DOU Notifier</h1>
+        <p>Gerencie notificações e busque no Diário Oficial da União</p>
+        <div class="serverless-info">
+            ⚡ Versão Serverless - Deploy em {{ deploy_time }}
         </div>
+    </div>
 
-        <!-- Tab: Busca no DOU -->
-        <div id="search" class="tab-content active">
-            <div class="section">
-                <h3>🔍 Busca no Diário Oficial da União</h3>
-                <form method="post">
-                    <div class="form-group">
-                        <label for="search_term">Termo de Busca:</label>
-                        <input type="text" id="search_term" name="search_term" 
-                               placeholder="Ex: 23001.000069/2025-95, Resolução CNE/CES, etc." 
-                               value="{{ search_term or '' }}" required>
+    {% if message %}
+        <div class="message {% if 'Erro' in message or 'não encontrado' in message %}error{% else %}success{% endif %}">
+            {{ message }}
+        </div>
+    {% endif %}
+
+    <div class="container">
+        <div class="card">
+            <h2>🔍 Buscar no DOU</h2>
+            <form method="post">
+                <div class="form-group">
+                    <label for="search_term">Termo de busca</label>
+                    <input type="text" id="search_term" name="search_term" 
+                           placeholder="Digite o termo de busca" 
+                           value="{{ search_term or '' }}" required>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" name="use_ai" {{ 'checked' if use_ai else '' }}> 
+                        Usar IA para resumos (OpenAI)
+                    </label>
+                </div>
+                <button type="submit">Buscar</button>
+
+                <div class="suggestions-panel">
+                    <strong>Sugestões de busca:</strong>
+                    <div style="margin-top: 10px;">
+                        <span class="suggestion-chip" onclick="setTerm('23001.000069/2025-95')">23001.000069/2025-95</span>
+                        <span class="suggestion-chip" onclick="setTerm('Associação Brasileira das Faculdades (Abrafi)')">Associação Brasileira das Faculdades (Abrafi)</span>
+                        <span class="suggestion-chip" onclick="setTerm('Resolução CNE/CES nº 2/2024')">Resolução CNE/CES nº 2/2024</span>
+                        <span class="suggestion-chip" onclick="setTerm('reconhecimento de diplomas de pós-graduação stricto sensu obtidos no exterior')">reconhecimento de diplomas...</span>
+                        <span class="suggestion-chip" onclick="setTerm('589/2025')">589/2025</span>
+                        <span class="suggestion-chip" onclick="setTerm('relatado em 4 de setembro de 2025')">relatado em 4 de setembro de 2025</span>
                     </div>
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" name="use_ai" {{ 'checked' if use_ai else '' }}> 
-                            Usar IA para gerar resumos (OpenAI)
-                        </label>
-                    </div>
-                    <button type="submit">🔍 Buscar</button>
-                </form>
-            </div>
+                </div>
+            </form>
 
             {% if results %}
-                <div class="section">
-                    <h3>📄 Resultados da Busca ({{ results|length }} encontrados)</h3>
+                <div class="results">
+                    <h3>📋 Resultados da Busca ({{ results|length }})</h3>
                     {% for result in results %}
-                        <div class="result">
-                            <h3>{{ result.article.title or result.article.filename }}</h3>
-                            <p><strong>Arquivo:</strong> {{ result.article.filename }}</p>
-                            <p><strong>Seção:</strong> {{ result.article.section }}</p>
-                            <p><strong>Termos encontrados:</strong> {{ result.terms_matched|join(', ') }}</p>
-                            
+                        <div class="result-item" onclick="openModal({{ loop.index }})">
+                            <h4>{{ result.article.title or result.article.filename }} ({{ result.article.section }})</h4>
+                            <p><strong style="color: var(--success-color);">🔍 Termos que geraram este resultado:</strong> 
+                               <span style="background: var(--success-color); color: white; padding: 2px 6px; border-radius: 12px; font-weight: bold;">{{ result.terms_matched|join('</span> <span style="background: var(--success-color); color: white; padding: 2px 6px; border-radius: 12px; font-weight: bold;">') }}</span>
+                            </p>
                             {% if result.summary %}
-                                <div class="summary">
-                                    <strong>📝 Resumo:</strong> {{ result.summary }}
-                                </div>
+                                <p><strong>Resumo:</strong> {{ result.summary }}</p>
                             {% endif %}
-                            
                             {% if result.snippets %}
-                                <div class="snippets">
-                                    <strong>📑 Trechos relevantes:</strong>
-                                    {% for snippet in result.snippets[:3] %}
+                                <div style="margin-top: 10px;">
+                                    <strong>Trechos relevantes:</strong>
+                                    {% for snippet in result.snippets[:2] %}
                                         <div class="snippet">{{ snippet }}</div>
                                     {% endfor %}
                                 </div>
                             {% endif %}
+                            <p style="color: var(--primary-color); font-size: 0.9rem; cursor: pointer; margin-top: 10px;">Clique para ver detalhes</p>
                         </div>
                     {% endfor %}
                 </div>
             {% endif %}
         </div>
 
-        <!-- Tab: Gerenciar Emails -->
-        <div id="emails" class="tab-content">
-            <div class="section">
-                <h3>📧 Cadastro de Emails</h3>
-                <form method="post">
-                    <div class="form-group">
-                        <label for="email">Email:</label>
-                        <input type="email" id="email" name="email" 
-                               placeholder="exemplo@email.com" required>
-                    </div>
-                    <button type="submit" name="action" value="register">✅ Cadastrar Email</button>
-                    <button type="submit" name="action" value="unregister" class="danger">❌ Remover Email</button>
-                </form>
-            </div>
+        <div class="card">
+            <h2>📧 Gerenciar Emails</h2>
 
-            <div class="section">
-                <h3>📋 Emails Cadastrados ({{ emails|length }})</h3>
-                <div class="email-list">
-                    {% for email in emails %}
-                        <div class="email-item">
-                            <span>{{ email }}</span>
-                            <form method="post" style="display: inline;">
-                                <input type="hidden" name="email" value="{{ email }}">
-                                <button type="submit" name="action" value="unregister" class="danger" style="padding: 5px 10px; font-size: 12px;">❌</button>
-                            </form>
-                        </div>
-                    {% else %}
-                        <p style="color: #666;">Nenhum email cadastrado ainda.</p>
-                    {% endfor %}
+            <form method="post">
+                <div class="form-group">
+                    <label for="email_register">Cadastrar novo email</label>
+                    <input type="email" id="email_register" name="email" placeholder="Digite o email" required>
                 </div>
-            </div>
-        </div>
+                <button type="submit" name="action" value="register">Cadastrar</button>
+            </form>
 
-        <!-- Tab: Configurações -->
-        <div id="config" class="tab-content">
-            <div class="section">
-                <h3>⚙️ Status das Configurações</h3>
-                <ul>
-                    <li>OpenAI API Key: {{ '✅ Configurada' if openai_key else '❌ Não configurada' }}</li>
-                    <li>SMTP Server: {{ smtp_server or '❌ Não configurado' }}</li>
-                    <li>SMTP User: {{ smtp_user or '❌ Não configurado' }}</li>
-                    <li>SMTP Pass: {{ '✅ Configurada' if smtp_pass else '❌ Não configurada' }}</li>
+            <form method="post" style="margin-top: 20px;">
+                <div class="form-group">
+                    <label for="email_remove">Remover email</label>
+                    <input type="email" id="email_remove" name="email" placeholder="Digite o email para remover" required>
+                </div>
+                <button type="submit" name="action" value="unregister" style="background: var(--error-color);">Remover</button>
+            </form>
+
+            <div class="email-list">
+                <h3>Emails Cadastrados</h3>
+                {% if emails %}
+                    <ul>
+                        {% for email in emails %}
+                            <li>
+                                <span class="email">{{ email }}</span>
+                                <form method="post" style="display: inline; margin: 0;">
+                                    <input type="hidden" name="email" value="{{ email }}">
+                                    <button type="submit" name="action" value="unregister" class="remove-btn">❌</button>
+                                </form>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p style="color: var(--text-secondary); font-style: italic;">Nenhum email cadastrado.</p>
+                {% endif %}
+            </div>
+
+            <div style="margin-top: 30px; padding: 15px; background: var(--background); border-radius: var(--radius); border: 1px solid var(--border);">
+                <h4>ℹ️ Informações da Versão Serverless</h4>
+                <ul style="margin: 10px 0; padding-left: 20px; color: var(--text-secondary);">
+                    <li>OpenAI: {{ '✅ Configurada' if openai_key else '❌ Não configurada' }}</li>
+                    <li>SMTP: {{ '✅ Configurado' if smtp_server else '❌ Não configurado' }}</li>
+                    <li>Armazenamento: Temporário (reinicia a cada deploy)</li>
+                    <li>Funcionalidades: Busca demonstrativa</li>
                 </ul>
-            </div>
-
-            <div class="section">
-                <h3>ℹ️ Informações</h3>
-                <p><strong>Versão:</strong> Serverless (Vercel)</p>
-                <p><strong>Deploy:</strong> {{ deploy_time }}</p>
-                <p><strong>Armazenamento:</strong> Memória temporária (reinicia a cada deploy)</p>
-                <p><strong>Funcionalidades:</strong> Busca demonstrativa, cadastro temporário de emails</p>
-            </div>
-
-            <div class="section">
-                <p style="text-align: center;">
-                    <a href="https://github.com/educmaia/fiscaldou" target="_blank" style="color: #2196f3; text-decoration: none;">
+                <p style="text-align: center; margin-top: 15px;">
+                    <a href="https://github.com/educmaia/fiscaldou" target="_blank" 
+                       style="color: var(--primary-color); text-decoration: none; font-weight: 500;">
                         📂 Ver código fonte completo no GitHub
                     </a>
                 </p>
