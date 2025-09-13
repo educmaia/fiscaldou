@@ -1,10 +1,7 @@
-from flask import Flask, request, render_template_string, jsonify
+from flask import Flask, request, render_template_string
 import os
 import re
-import requests
 from datetime import datetime
-import xml.etree.ElementTree as ET
-from io import StringIO
 
 app = Flask(__name__)
 
@@ -385,72 +382,88 @@ HTML_TEMPLATE = '''
 @app.route('/', methods=['GET', 'POST'])
 def home():
     """Página principal com funcionalidades completas do FiscalDOU."""
-    message = None
-    search_results = None
-    search_term = ''
-    use_ai = False
-    
-    # Verificar variáveis de ambiente
-    openai_key = bool(os.getenv('OPENAI_API_KEY'))
-    smtp_server = os.getenv('SMTP_SERVER', '')
-    smtp_user = os.getenv('SMTP_USER', '')
-    smtp_pass = bool(os.getenv('SMTP_PASS'))
-    
-    if request.method == 'POST':
-        if 'search_term' in request.form:
-            # Handle search
-            search_term = request.form.get('search_term', '').strip()
-            use_ai = request.form.get('use_ai') == 'on'
-            
-            if not search_term:
-                message = "Por favor, digite um termo de busca."
-            else:
-                try:
-                    # Perform search with the provided term
-                    matches = search_dou_demo(search_term)
-                    if matches:
-                        search_results = matches
-                        message = f"Encontrados {len(matches)} artigos para '{search_term}'."
-                    else:
-                        message = f"Nenhum artigo encontrado para o termo '{search_term}'."
-                except Exception as e:
-                    message = f"Erro na busca: {str(e)}"
+    try:
+        message = None
+        search_results = None
+        search_term = ''
+        use_ai = False
         
-        else:
-            # Handle email actions
-            action = request.form.get('action')
-            email = request.form.get('email', '').strip().lower()
-            
-            if action in ['register', 'unregister'] and email:
-                if action == 'register':
-                    if email in emails_storage:
-                        message = f'Email {email} já está cadastrado.'
-                    else:
-                        emails_storage.add(email)
-                        message = f'Email {email} cadastrado com sucesso!'
+        # Verificar variáveis de ambiente
+        openai_key = bool(os.getenv('OPENAI_API_KEY'))
+        smtp_server = os.getenv('SMTP_SERVER', '')
+        smtp_user = os.getenv('SMTP_USER', '')
+        smtp_pass = bool(os.getenv('SMTP_PASS'))
+        
+        if request.method == 'POST':
+            if 'search_term' in request.form:
+                # Handle search
+                search_term = request.form.get('search_term', '').strip()
+                use_ai = request.form.get('use_ai') == 'on'
                 
-                elif action == 'unregister':
-                    if email in emails_storage:
-                        emails_storage.remove(email)
-                        message = f'Email {email} removido com sucesso!'
-                    else:
-                        message = f'Email {email} não encontrado.'
+                if not search_term:
+                    message = "Por favor, digite um termo de busca."
+                else:
+                    try:
+                        # Perform search with the provided term
+                        matches = search_dou_demo(search_term)
+                        if matches:
+                            search_results = matches
+                            message = f"Encontrados {len(matches)} artigos para '{search_term}'."
+                        else:
+                            message = f"Nenhum artigo encontrado para o termo '{search_term}'."
+                    except Exception as e:
+                        message = f"Erro na busca: {str(e)}"
+            
             else:
-                message = "Por favor, forneça um email válido."
+                # Handle email actions
+                action = request.form.get('action')
+                email = request.form.get('email', '').strip().lower()
+                
+                if action in ['register', 'unregister'] and email:
+                    if action == 'register':
+                        if email in emails_storage:
+                            message = f'Email {email} já está cadastrado.'
+                        else:
+                            emails_storage.add(email)
+                            message = f'Email {email} cadastrado com sucesso!'
+                    
+                    elif action == 'unregister':
+                        if email in emails_storage:
+                            emails_storage.remove(email)
+                            message = f'Email {email} removido com sucesso!'
+                        else:
+                            message = f'Email {email} não encontrado.'
+                else:
+                    message = "Por favor, forneça um email válido."
+        
+        deploy_time = datetime.now().strftime('%d/%m/%Y às %H:%M:%S UTC')
+        
+        return render_template_string(HTML_TEMPLATE, 
+                                    openai_key=openai_key,
+                                    smtp_server=smtp_server,
+                                    smtp_user=smtp_user,
+                                    smtp_pass=smtp_pass,
+                                    deploy_time=deploy_time,
+                                    message=message,
+                                    results=search_results,
+                                    search_term=search_term,
+                                    use_ai=use_ai,
+                                    emails=list(emails_storage))
     
-    deploy_time = datetime.now().strftime('%d/%m/%Y às %H:%M:%S UTC')
-    
-    return render_template_string(HTML_TEMPLATE, 
-                                openai_key=openai_key,
-                                smtp_server=smtp_server,
-                                smtp_user=smtp_user,
-                                smtp_pass=smtp_pass,
-                                deploy_time=deploy_time,
-                                message=message,
-                                results=search_results,
-                                search_term=search_term,
-                                use_ai=use_ai,
-                                emails=list(emails_storage))
+    except Exception as e:
+        # Em caso de erro, retornar uma página simples
+        error_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head><title>Erro - FiscalDOU</title></head>
+        <body>
+            <h1>Erro no FiscalDOU</h1>
+            <p>Ocorreu um erro: {str(e)}</p>
+            <p><a href="/">Tentar novamente</a></p>
+        </body>
+        </html>
+        """
+        return error_html, 500
 
 @app.route('/health')
 def health():
@@ -466,16 +479,35 @@ def health():
 @app.route('/config')
 def config():
     """Endpoint para verificar configurações (sem expor valores sensíveis)."""
-    return {
-        "openai_configured": bool(os.getenv('OPENAI_API_KEY')),
-        "smtp_configured": bool(os.getenv('SMTP_SERVER') and os.getenv('SMTP_USER') and os.getenv('SMTP_PASS')),
-        "environment_variables": {
-            "OPENAI_API_KEY": "configured" if os.getenv('OPENAI_API_KEY') else "missing",
-            "SMTP_SERVER": "configured" if os.getenv('SMTP_SERVER') else "missing",
-            "SMTP_USER": "configured" if os.getenv('SMTP_USER') else "missing", 
-            "SMTP_PASS": "configured" if os.getenv('SMTP_PASS') else "missing"
+    try:
+        return {
+            "status": "ok",
+            "openai_configured": bool(os.getenv('OPENAI_API_KEY')),
+            "smtp_configured": bool(os.getenv('SMTP_SERVER') and os.getenv('SMTP_USER') and os.getenv('SMTP_PASS')),
+            "environment_variables": {
+                "OPENAI_API_KEY": "configured" if os.getenv('OPENAI_API_KEY') else "missing",
+                "SMTP_SERVER": "configured" if os.getenv('SMTP_SERVER') else "missing",
+                "SMTP_USER": "configured" if os.getenv('SMTP_USER') else "missing", 
+                "SMTP_PASS": "configured" if os.getenv('SMTP_PASS') else "missing"
+            }
         }
-    }
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+@app.route('/favicon.ico')
+def favicon():
+    """Handle favicon requests."""
+    return '', 204
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle internal server errors."""
+    return f"Internal Server Error: {str(error)}", 500
+
+@app.errorhandler(404)  
+def not_found(error):
+    """Handle 404 errors."""
+    return "Page not found", 404
 
 # Export the Flask app for Vercel
 app = app
