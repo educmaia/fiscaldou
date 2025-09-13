@@ -163,19 +163,26 @@ HTML_TEMPLATE = '''
     <title>DOU Notifier - Serverless</title>
     <style>
         :root {
-            --primary-color: #2563eb;
-            --primary-hover: #1d4ed8;
-            --success-color: #10b981;
-            --warning-color: #f59e0b;
-            --error-color: #ef4444;
-            --text-primary: #1f2937;
-            --text-secondary: #6b7280;
-            --background: #f8fafc;
+            --primary-color: #0ea5e9;
+            --primary-hover: #0284c7;
+            --secondary-color: #6b7280;
+            --success-color: #059669;
+            --error-color: #dc2626;
+            --warning-color: #d97706;
+            --background: #ffffff;
             --card-bg: #ffffff;
-            --border: #e5e7eb;
+            --text-primary: #111827;
+            --text-secondary: #6b7280;
+            --border: #f3f4f6;
+            --border-light: #f9fafb;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            --shadow-hover: 0 10px 20px -5px rgba(0, 0, 0, 0.12), 0 4px 8px -2px rgba(0, 0, 0, 0.08);
             --radius: 12px;
-            --shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-            --shadow-hover: 0 10px 25px rgba(0, 0, 0, 0.1);
+            --radius-sm: 6px;
             --transition: all 0.2s ease-in-out;
         }
 
@@ -187,7 +194,7 @@ HTML_TEMPLATE = '''
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #fafafa;
             min-height: 100vh;
             padding: 20px;
             color: var(--text-primary);
@@ -196,7 +203,6 @@ HTML_TEMPLATE = '''
         .header {
             text-align: center;
             margin-bottom: 40px;
-            color: white;
         }
 
         .header h1 {
@@ -207,11 +213,10 @@ HTML_TEMPLATE = '''
             -webkit-text-fill-color: transparent;
             background-clip: text;
             margin-bottom: 10px;
-            color: white;
         }
 
         .header p {
-            color: rgba(255, 255, 255, 0.9);
+            color: var(--text-secondary);
             font-size: 1.1rem;
         }
 
@@ -226,15 +231,15 @@ HTML_TEMPLATE = '''
         .card {
             background: var(--card-bg);
             border-radius: var(--radius);
-            box-shadow: var(--shadow);
-            padding: 30px;
+            box-shadow: var(--shadow-md);
+            padding: 32px;
             transition: var(--transition);
             border: 1px solid var(--border);
         }
 
         .card:hover {
-            box-shadow: var(--shadow-hover);
-            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-3px);
         }
 
         .card h2 {
@@ -259,18 +264,19 @@ HTML_TEMPLATE = '''
 
         input[type="email"], input[type="text"] {
             width: 100%;
-            padding: 12px 16px;
-            border: 2px solid var(--border);
+            padding: 14px 18px;
+            border: 1px solid var(--border);
             border-radius: var(--radius);
             font-size: 1rem;
             transition: var(--transition);
             background: var(--background);
+            box-shadow: var(--shadow-sm);
         }
 
         input[type="email"]:focus, input[type="text"]:focus {
             outline: none;
             border-color: var(--primary-color);
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+            box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1), var(--shadow);
         }
 
         .suggestion-chip {
@@ -293,10 +299,10 @@ HTML_TEMPLATE = '''
         }
 
         button {
-            background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+            background: var(--primary-color);
             color: white;
             border: none;
-            padding: 12px 24px;
+            padding: 14px 24px;
             border-radius: var(--radius);
             font-size: 1rem;
             font-weight: 600;
@@ -304,15 +310,18 @@ HTML_TEMPLATE = '''
             transition: var(--transition);
             width: 100%;
             margin-top: 10px;
+            box-shadow: var(--shadow-sm);
         }
 
         button:hover {
+            background: var(--primary-hover);
             transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+            box-shadow: var(--shadow-md);
         }
 
         button:active {
             transform: translateY(0);
+            box-shadow: var(--shadow-sm);
         }
 
         .message {
@@ -580,19 +589,6 @@ HTML_TEMPLATE = '''
                 {% endif %}
             </div>
 
-            <div style="margin-top: 30px; padding: 15px; background: var(--background); border-radius: var(--radius); border: 1px solid var(--border);">
-                <h4>ℹ️ Informações do Sistema</h4>
-                <ul style="margin: 10px 0; padding-left: 20px; color: var(--text-secondary);">
-                    <li>Status: {{ '🟢 Online' }}</li>
-                    <li>Funcionalidade: Sistema de monitoramento DOU</li>
-                </ul>
-                <p style="text-align: center; margin-top: 15px;">
-                    <a href="https://github.com/educmaia/fiscaldou" target="_blank"
-                       style="color: var(--primary-color); text-decoration: none; font-weight: 500;">
-                        📂 Ver código fonte completo no GitHub
-                    </a>
-                </p>
-            </div>
         </div>
     </div>
 </body>
