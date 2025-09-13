@@ -82,6 +82,35 @@ def save_emails_to_edge_config(emails_set):
     emails_list = list(emails_set)
     return set_edge_config_item('emails', emails_list)
 
+def get_search_terms_from_edge_config(email):
+    """Get search terms for a specific email from Edge Config"""
+    terms_key = f'terms_{email.replace("@", "_at_").replace(".", "_dot_")}'
+    terms = get_from_edge_config(terms_key)
+    if terms and isinstance(terms, list):
+        return terms
+    return []
+
+def save_search_terms_to_edge_config(email, terms_list):
+    """Save search terms for a specific email to Edge Config"""
+    terms_key = f'terms_{email.replace("@", "_at_").replace(".", "_dot_")}'
+    return set_edge_config_item(terms_key, terms_list)
+
+def add_search_term_to_edge_config(email, term):
+    """Add a search term for an email in Edge Config"""
+    current_terms = get_search_terms_from_edge_config(email)
+    if term not in current_terms:
+        current_terms.append(term)
+        return save_search_terms_to_edge_config(email, current_terms)
+    return False
+
+def remove_search_term_from_edge_config(email, term):
+    """Remove a search term for an email in Edge Config"""
+    current_terms = get_search_terms_from_edge_config(email)
+    if term in current_terms:
+        current_terms.remove(term)
+        return save_search_terms_to_edge_config(email, current_terms)
+    return False
+
 # Fallback storage (usado se Edge Config não estiver disponível)
 emails_storage = set()
 search_terms_storage = {}
@@ -899,7 +928,16 @@ HTML_TEMPLATE = '''
                     </label>
                 </div>
                 <button type="submit">Buscar</button>
+            </form>
 
+            <!-- Botão para buscar todos os termos cadastrados -->
+            <form method="post" style="margin-top: 15px;">
+                <button type="submit" name="action" value="search_all_terms" style="background: var(--success-color); width: 100%;">
+                    🔍 Buscar Todos os Termos Cadastrados
+                </button>
+            </form>
+
+            <div style="margin-top: 20px;">
                 <div class="suggestions-panel">
                     <strong>Sugestões de busca:</strong>
                     <div style="margin-top: 10px;">
@@ -962,19 +1000,47 @@ HTML_TEMPLATE = '''
             </form>
 
             <div class="email-list">
-                <h3>Emails Cadastrados</h3>
+                <h3>Emails e Termos de Busca</h3>
                 {% if emails %}
-                    <ul>
-                        {% for email in emails %}
-                            <li>
-                                <span class="email">{{ email }}</span>
+                    {% for email in emails %}
+                        <div class="email-card" style="margin-bottom: 20px; padding: 15px; background: var(--background); border-radius: var(--radius); border: 1px solid var(--border);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                <span class="email" style="font-weight: 600;">{{ email }}</span>
                                 <form method="post" style="display: inline; margin: 0;">
                                     <input type="hidden" name="email" value="{{ email }}">
-                                    <button type="submit" name="action" value="unregister" class="remove-btn">❌</button>
+                                    <button type="submit" name="action" value="unregister" class="remove-btn" style="background: var(--error-color); color: white; border: none; padding: 5px 10px; border-radius: var(--radius-sm); font-size: 0.8rem;">Remover Email</button>
                                 </form>
-                            </li>
-                        {% endfor %}
-                    </ul>
+                            </div>
+
+                            <!-- Termos de busca para este email -->
+                            <div class="email-terms">
+                                <h4 style="margin: 10px 0 5px 0; font-size: 0.9rem; color: var(--text-secondary);">Termos de Busca:</h4>
+                                {% if email_terms[email] %}
+                                    <div class="terms-list" style="margin-bottom: 10px;">
+                                        {% for term in email_terms[email] %}
+                                            <span style="display: inline-block; background: var(--primary-color); color: white; padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; margin: 2px 4px 2px 0;">
+                                                {{ term }}
+                                                <form method="post" style="display: inline; margin: 0;">
+                                                    <input type="hidden" name="email" value="{{ email }}">
+                                                    <input type="hidden" name="term" value="{{ term }}">
+                                                    <button type="submit" name="action" value="remove_term" style="background: none; border: none; color: white; margin-left: 5px; font-size: 0.8rem; cursor: pointer;">×</button>
+                                                </form>
+                                            </span>
+                                        {% endfor %}
+                                    </div>
+                                {% else %}
+                                    <p style="font-size: 0.8rem; color: var(--text-secondary); font-style: italic; margin: 5px 0;">Nenhum termo cadastrado.</p>
+                                {% endif %}
+
+                                <!-- Formulário para adicionar novo termo -->
+                                <form method="post" style="display: flex; gap: 5px; margin-top: 10px;">
+                                    <input type="hidden" name="email" value="{{ email }}">
+                                    <input type="text" name="term" placeholder="Novo termo de busca" style="flex: 1; padding: 6px 10px; font-size: 0.8rem; border: 1px solid var(--border); border-radius: var(--radius-sm);" required>
+                                    <button type="submit" name="action" value="add_term" style="background: var(--success-color); color: white; border: none; padding: 6px 12px; border-radius: var(--radius-sm); font-size: 0.8rem;">Adicionar</button>
+                                </form>
+                            </div>
+                        </div>
+                    {% endfor %}
                 {% else %}
                     <p style="color: var(--text-secondary); font-style: italic;">Nenhum email cadastrado.</p>
                 {% endif %}
@@ -1015,7 +1081,7 @@ def home():
                 # Handle search
                 search_term = request.form.get('search_term', '').strip()
                 use_ai = request.form.get('use_ai') == 'on'
-                
+
                 if not search_term:
                     message = "Por favor, digite um termo de busca."
                 else:
@@ -1054,6 +1120,45 @@ def home():
                                 message += f" (Mostrando dados de demonstração - {len(matches)} artigos)"
                         except:
                             pass
+
+            elif 'action' in request.form and request.form.get('action') == 'search_all_terms':
+                # Search for all terms from all registered emails
+                try:
+                    all_terms = []
+                    for email in current_emails:
+                        if edge_config_available:
+                            email_terms = get_search_terms_from_edge_config(email)
+                        else:
+                            email_terms = search_terms_storage.get(email, [])
+                        all_terms.extend(email_terms)
+
+                    # Remove duplicates
+                    unique_terms = list(set(all_terms))
+
+                    if unique_terms:
+                        print(f"[DEBUG] Searching for all registered terms: {unique_terms}")
+                        matches, search_stats = find_matches_vercel(unique_terms)
+
+                        if matches:
+                            # Clean HTML from summaries and snippets
+                            for result in matches:
+                                if 'snippets' in result and result['snippets']:
+                                    result['snippets'] = [clean_html(snippet) for snippet in result['snippets']]
+                                # Add summary
+                                result['summary'] = f'Documento oficial relacionado aos termos: {", ".join(result["terms_matched"])}'
+
+                            search_results = matches
+                            search_term = ", ".join(unique_terms[:3]) + ("..." if len(unique_terms) > 3 else "")
+                            message = f"Busca por todos os termos cadastrados: {len(matches)} artigos encontrados para {len(unique_terms)} termos únicos."
+                        else:
+                            message = f"Nenhum artigo encontrado para os {len(unique_terms)} termos cadastrados. Processados {search_stats.get('xml_files_processed', 0)} arquivos XML."
+                    else:
+                        message = "Nenhum termo de busca cadastrado nos emails."
+                        search_stats = {}
+                except Exception as e:
+                    print(f"[ERROR] Search all terms failed: {str(e)}")
+                    message = f"Erro na busca por todos os termos: {str(e)}"
+                    search_stats = {'error': str(e)}
             
             elif 'action' in request.form and request.form.get('action') == 'refresh_cache':
                 # Handle cache refresh
@@ -1071,7 +1176,47 @@ def home():
                 action = request.form.get('action')
                 email = request.form.get('email', '').strip().lower()
 
-                if action in ['register', 'unregister'] and email:
+                if action == 'add_term':
+                    # Add search term to email
+                    term = request.form.get('term', '').strip()
+                    if email and term:
+                        if edge_config_available:
+                            if add_search_term_to_edge_config(email, term):
+                                message = f'Termo "{term}" adicionado para {email}!'
+                            else:
+                                message = f'Termo "{term}" já existe para {email}.'
+                        else:
+                            # Fallback
+                            if email not in search_terms_storage:
+                                search_terms_storage[email] = []
+                            if term not in search_terms_storage[email]:
+                                search_terms_storage[email].append(term)
+                                message = f'Termo "{term}" adicionado para {email}! (Memória)'
+                            else:
+                                message = f'Termo "{term}" já existe para {email}.'
+                    else:
+                        message = "Por favor, forneça um email e termo válidos."
+
+                elif action == 'remove_term':
+                    # Remove search term from email
+                    term = request.form.get('term', '').strip()
+                    if email and term:
+                        if edge_config_available:
+                            if remove_search_term_from_edge_config(email, term):
+                                message = f'Termo "{term}" removido de {email}!'
+                            else:
+                                message = f'Termo "{term}" não encontrado para {email}.'
+                        else:
+                            # Fallback
+                            if email in search_terms_storage and term in search_terms_storage[email]:
+                                search_terms_storage[email].remove(term)
+                                message = f'Termo "{term}" removido de {email}! (Memória)'
+                            else:
+                                message = f'Termo "{term}" não encontrado para {email}.'
+                    else:
+                        message = "Por favor, forneça um email e termo válidos."
+
+                elif action in ['register', 'unregister'] and email:
                     if action == 'register':
                         if email in current_emails:
                             message = f'Email {email} já está cadastrado.'
@@ -1087,31 +1232,45 @@ def home():
                             else:
                                 emails_storage.add(email)
                                 message = f'Email {email} cadastrado com sucesso! (Memória)'
-                    
+
                     elif action == 'unregister':
                         if email in current_emails:
                             current_emails.remove(email)
                             # Salvar no Edge Config ou fallback
                             if edge_config_available:
                                 if save_emails_to_edge_config(current_emails):
+                                    # Also remove all terms for this email
+                                    terms_key = f'terms_{email.replace("@", "_at_").replace(".", "_dot_")}'
+                                    set_edge_config_item(terms_key, [])
                                     message = f'Email {email} removido com sucesso! (Edge Config)'
                                 else:
                                     emails_storage.discard(email)  # Fallback
+                                    search_terms_storage.pop(email, None)
                                     message = f'Email {email} removido com sucesso! (Fallback)'
                             else:
                                 emails_storage.discard(email)
+                                search_terms_storage.pop(email, None)
                                 message = f'Email {email} removido com sucesso! (Memória)'
                         else:
                             message = f'Email {email} não encontrado.'
                 else:
                     message = "Por favor, forneça um email válido."
         
+        # Carregar termos de busca para cada email
+        email_terms = {}
+        for email in current_emails:
+            if edge_config_available:
+                email_terms[email] = get_search_terms_from_edge_config(email)
+            else:
+                email_terms[email] = search_terms_storage.get(email, [])
+
         return render_template_string(HTML_TEMPLATE,
                                     message=message,
                                     results=search_results,
                                     search_term=search_term,
                                     use_ai=use_ai,
                                     emails=list(current_emails),
+                                    email_terms=email_terms,
                                     search_stats=search_stats if 'search_stats' in locals() else {})
     
     except Exception as e:
