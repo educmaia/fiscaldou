@@ -724,6 +724,27 @@ HTML_TEMPLATE = '''
             border: 1px solid rgba(239, 68, 68, 0.2);
         }
 
+        .message.info {
+            background: rgba(14, 165, 233, 0.1);
+            color: var(--primary-color);
+            border: 1px solid rgba(14, 165, 233, 0.2);
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(14,165,233,0.3);
+            border-top-color: var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
         .email-list {
             margin-top: 20px;
         }
@@ -1218,6 +1239,52 @@ HTML_TEMPLATE = '''
                     closeModal();
                 }
             });
+
+            // Mostrar mensagem de processamento ao atualizar cache do DOU
+            try {
+                const refreshInput = document.querySelector('form input[name="action"][value="refresh_cache"]');
+                if (refreshInput) {
+                    const refreshForm = refreshInput.closest('form');
+                    const refreshButton = refreshForm.querySelector('button[type="submit"]');
+                    let msg = document.getElementById('refreshProcessing');
+                    if (!msg) {
+                        msg = document.createElement('div');
+                        msg.id = 'refreshProcessing';
+                        msg.className = 'message info';
+                        msg.style.display = 'none';
+                        msg.style.marginTop = '10px';
+                        refreshForm.parentElement.insertBefore(msg, refreshForm.nextSibling);
+                    }
+                    refreshForm.addEventListener('submit', function() {
+                        if (refreshButton) {
+                            refreshButton.disabled = true;
+                            refreshButton.textContent = '🔄 Atualizando cache...';
+                        }
+                        msg.innerHTML = '<span class="spinner"></span>Download em andamento. Essa operação dura em torno de 20 segundos.';
+                        msg.style.display = 'block';
+                    });
+                }
+            } catch (err) {
+                // Silenciar erros não críticos
+            }
+
+            // Mostrar mensagem de processamento ao submeter a busca
+            try {
+                const searchForm = document.getElementById('searchForm');
+                const searchBtn = document.getElementById('searchBtn');
+                const searchMsg = document.getElementById('searchProcessing');
+                if (searchForm && searchBtn && searchMsg) {
+                    searchForm.addEventListener('submit', function() {
+                        searchBtn.disabled = true;
+                        searchBtn.textContent = '🔎 Buscando...';
+                        // Exibe a mesma mensagem solicitada
+                        searchMsg.innerHTML = '<span class="spinner"></span>Download em andamento. Essa operação dura em torno de 20 segundos.';
+                        searchMsg.style.display = 'block';
+                    });
+                }
+            } catch (err) {
+                // Silenciar erros não críticos
+            }
         });
     </script>
 </head>
@@ -1240,12 +1307,13 @@ HTML_TEMPLATE = '''
             <h2>📊 Estatísticas da Busca</h2>
 
             <!-- Botão de Atualização -->
-            <form method="post" style="margin-bottom: 20px;">
+            <form method="post" style="margin-bottom: 20px;" id="refreshCacheForm">
                 <input type="hidden" name="action" value="refresh_cache">
-                <button type="submit" style="background: var(--warning-color); width: 100%;">
+                <button type="submit" style="background: var(--warning-color); width: 100%;" id="refreshCacheBtn">
                     🔄 Atualizar Cache DOU
                 </button>
             </form>
+            <div id="refreshProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
 
             {% if search_stats %}
                 {% if search_stats.get('error') %}
@@ -1368,7 +1436,7 @@ HTML_TEMPLATE = '''
         <!-- COLUNA 2: BUSCAR NO DOU -->
         <div class="card">
             <h2>🔍 Buscar no DOU</h2>
-            <form method="post">
+            <form method="post" id="searchForm">
                 <div class="form-group">
                     <label for="search_term">Termo de busca</label>
                     <input type="text" id="search_term" name="search_term"
@@ -1381,8 +1449,9 @@ HTML_TEMPLATE = '''
                         Usar IA para resumos (OpenAI)
                     </label>
                 </div>
-                <button type="submit">Buscar</button>
+                <button type="submit" id="searchBtn">Buscar</button>
             </form>
+            <div id="searchProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
 
             <!-- Botão para buscar todos os termos cadastrados -->
             <form method="post" style="margin-top: 15px;">
