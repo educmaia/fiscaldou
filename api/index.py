@@ -1234,8 +1234,9 @@ HTML_TEMPLATE = '''
     {% endif %}
 
     <div class="container three-column-layout">
-        <!-- PRIMEIRA COLUNA: ESTATÍSTICAS -->
-        <div class="card">
+        <!-- COLUNA 1: ESTATÍSTICAS + GERENCIAR EMAILS -->
+        <div>
+          <div class="card">
             <h2>📊 Estatísticas da Busca</h2>
 
             <!-- Botão de Atualização -->
@@ -1292,80 +1293,10 @@ HTML_TEMPLATE = '''
                     📊 Faça uma busca para ver as estatísticas de processamento
                 </div>
             {% endif %}
-        </div>
+          </div>
 
-        <!-- SEGUNDA COLUNA: BUSCAR NO DOU -->
-        <div class="card">
-            <h2>🔍 Buscar no DOU</h2>
-            <form method="post">
-                <div class="form-group">
-                    <label for="search_term">Termo de busca</label>
-                    <input type="text" id="search_term" name="search_term"
-                           placeholder="Digite o termo de busca"
-                           value="{{ search_term or '' }}" required>
-                </div>
-                <div class="form-group">
-                    <label>
-                        <input type="checkbox" name="use_ai" {{ 'checked' if use_ai else '' }}>
-                        Usar IA para resumos (OpenAI)
-                    </label>
-                </div>
-                <button type="submit">Buscar</button>
-            </form>
-
-            <!-- Botão para buscar todos os termos cadastrados -->
-            <form method="post" style="margin-top: 15px;">
-                <button type="submit" name="action" value="search_all_terms" style="background: var(--success-color); width: 100%;">
-                    🔍 Buscar Todos os Termos Cadastrados
-                </button>
-            </form>
-
-            <div style="margin-top: 20px;">
-                <div class="suggestions-panel">
-                    <strong>Sugestões de busca:</strong>
-                    <div style="margin-top: 10px;">
-                        <span class="suggestion-chip" onclick="setTerm('23001.000069/2025-95')">23001.000069/2025-95</span>
-                        <span class="suggestion-chip" onclick="setTerm('Associação Brasileira das Faculdades (Abrafi)')">Associação Brasileira das Faculdades (Abrafi)</span>
-                        <span class="suggestion-chip" onclick="setTerm('Resolução CNE/CES nº 2/2024')">Resolução CNE/CES nº 2/2024</span>
-                        <span class="suggestion-chip" onclick="setTerm('reconhecimento de diplomas de pós-graduação stricto sensu obtidos no exterior')">reconhecimento de diplomas...</span>
-                        <span class="suggestion-chip" onclick="setTerm('589/2025')">589/2025</span>
-                        <span class="suggestion-chip" onclick="setTerm('relatado em 4 de setembro de 2025')">relatado em 4 de setembro de 2025</span>
-                    </div>
-                </div>
-            </form>
-
-            {% if results %}
-                <div class="results">
-                    <h3>📋 Resultados da Busca ({{ results|length }})</h3>
-                    {% for result in results %}
-                        <div class="result-item" onclick="openModal({{ loop.index }})">
-                            <h4>{{ result.article.title or result.article.filename }} ({{ result.article.section }})</h4>
-                            <p><strong style="color: var(--success-color);">🔍 Termos que geraram este resultado:</strong>
-                               <span style="background: var(--success-color); color: white; padding: 2px 6px; border-radius: 12px; font-weight: bold;">{{ result.terms_matched|join('</span> <span style="background: var(--success-color); color: white; padding: 2px 6px; border-radius: 12px; font-weight: bold;">') }}</span>
-                            </p>
-                            {% if result.summary %}
-                                <p><strong>Resumo:</strong> {{ result.summary }}</p>
-                            {% endif %}
-                            {% if result.snippets %}
-                                <div style="margin-top: 10px;">
-                                    <strong>Trechos relevantes:</strong>
-                                    {% for snippet in result.snippets[:2] %}
-                                        <div class="snippet">{{ snippet }}</div>
-                                    {% endfor %}
-                                </div>
-                            {% endif %}
-                            <p style="color: var(--primary-color); font-size: 0.9rem; cursor: pointer; margin-top: 10px; font-weight: 500;">
-                                🔍 Clique para ver detalhes completos
-                            </p>
-                        </div>
-                    {% endfor %}
-                </div>
-            {% endif %}
-        </div>
-
-        <!-- TERCEIRA COLUNA: EMAILS -->
-
-        <div class="card">
+          <!-- GERENCIAR EMAILS (mesma coluna) -->
+          <div class="card">
             <h2>📧 Gerenciar Emails</h2>
 
             <form method="post">
@@ -1431,6 +1362,87 @@ HTML_TEMPLATE = '''
                 {% endif %}
             </div>
 
+          </div>
+        </div>
+
+        <!-- COLUNA 2: BUSCAR NO DOU -->
+        <div class="card">
+            <h2>🔍 Buscar no DOU</h2>
+            <form method="post">
+                <div class="form-group">
+                    <label for="search_term">Termo de busca</label>
+                    <input type="text" id="search_term" name="search_term"
+                           placeholder="Digite o termo de busca"
+                           value="{{ search_term or '' }}" required>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" name="use_ai" {{ 'checked' if use_ai else '' }}>
+                        Usar IA para resumos (OpenAI)
+                    </label>
+                </div>
+                <button type="submit">Buscar</button>
+            </form>
+
+            <!-- Botão para buscar todos os termos cadastrados -->
+            <form method="post" style="margin-top: 15px;">
+                <button type="submit" name="action" value="search_all_terms" style="background: var(--success-color); width: 100%;">
+                    🔍 Buscar Todos os Termos Cadastrados
+                </button>
+            </form>
+
+            <div style="margin-top: 20px;">
+                <div class="suggestions-panel">
+                    <strong>Sugestões de busca:</strong>
+                    <div style="margin-top: 10px;">
+                        <span class="suggestion-chip" onclick="setTerm('23001.000069/2025-95')">23001.000069/2025-95</span>
+                        <span class="suggestion-chip" onclick="setTerm('Associação Brasileira das Faculdades (Abrafi)')">Associação Brasileira das Faculdades (Abrafi)</span>
+                        <span class="suggestion-chip" onclick="setTerm('Resolução CNE/CES nº 2/2024')">Resolução CNE/CES nº 2/2024</span>
+                        <span class="suggestion-chip" onclick="setTerm('reconhecimento de diplomas de pós-graduação stricto sensu obtidos no exterior')">reconhecimento de diplomas...</span>
+                        <span class="suggestion-chip" onclick="setTerm('589/2025')">589/2025</span>
+                        <span class="suggestion-chip" onclick="setTerm('relatado em 4 de setembro de 2025')">relatado em 4 de setembro de 2025</span>
+                    </div>
+                </div>
+            </form>
+
+            
+        </div>
+
+        <!-- COLUNA 3: RESULTADOS ENCONTRADOS -->
+
+        <div class="card">
+            <h2>📋 Resultados Encontrados</h2>
+            {% if results %}
+                <div class="results">
+                    <h3>Resultados da Busca ({{ results|length }})</h3>
+                    {% for result in results %}
+                        <div class="result-item" onclick="openModal({{ loop.index }})">
+                            <h4>{{ result.article.title or result.article.filename }} ({{ result.article.section }})</h4>
+                            <p><strong style="color: var(--success-color);">🔍 Termos que geraram este resultado:</strong>
+                               <span style="background: var(--success-color); color: white; padding: 2px 6px; border-radius: 12px; font-weight: bold;">{{ result.terms_matched|join('</span> <span style=\"background: var(--success-color); color: white; padding: 2px 6px; border-radius: 12px; font-weight: bold;\">') }}</span>
+                            </p>
+                            {% if result.summary %}
+                                <p><strong>Resumo:</strong> {{ result.summary }}</p>
+                            {% endif %}
+                            {% if result.snippets %}
+                                <div style="margin-top: 10px;">
+                                    <strong>Trechos relevantes:</strong>
+                                    {% for snippet in result.snippets[:2] %}
+                                        <div class="snippet">{{ snippet }}</div>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                            <p style="color: var(--primary-color); font-size: 0.9rem; cursor: pointer; margin-top: 10px; font-weight: 500;">
+                                🔍 Clique para ver detalhes completos
+                            </p>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 40px;">
+                    Nenhum resultado para exibir.
+                </div>
+            {% endif %}
         </div>
     </div>
 
