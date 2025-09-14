@@ -1526,10 +1526,10 @@ HTML_TEMPLATE = '''
                                     {% endif %}
 
                                     <!-- Formulário para adicionar novo termo -->
-                                    <form method="post" style="display: flex; gap: 8px; margin-top: 10px; align-items: center;">
+                                    <form method="post" style="display: flex; gap: 6px; margin-top: 10px; align-items: stretch;">
                                         <input type="hidden" name="email" value="{{ email }}">
-                                        <input type="text" name="term" placeholder="Novo termo de busca" style="flex: 2; padding: 8px 12px; font-size: 0.9rem; border: 1px solid var(--border); border-radius: var(--radius-sm); min-width: 200px;" required>
-                                        <button type="submit" name="action" value="add_term" style="background: var(--success-color); color: white; border: none; padding: 8px 16px; border-radius: var(--radius-sm); font-size: 0.8rem; white-space: nowrap; flex-shrink: 0;">+</button>
+                                        <input type="text" name="term" placeholder="Novo termo de busca" style="flex: 1; padding: 6px 10px; font-size: 0.8rem; border: 1px solid var(--border); border-radius: var(--radius-sm); min-width: 0;" required>
+                                        <button type="submit" name="action" value="add_term" style="background: var(--success-color); color: white; border: none; padding: 6px 10px; border-radius: var(--radius-sm); font-size: 0.8rem; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">+</button>
                                     </form>
                                 </div>
                             </div>
