@@ -592,44 +592,49 @@ HTML_TEMPLATE = '''
             font-size: 1.1rem;
         }
 
-        .container {
+        /* NOVA ESTRUTURA: 3 COLUNAS NO TOPO + RESULTADOS EMBAIXO */
+        .top-section {
             display: flex !important;
-            flex-wrap: nowrap !important;
             width: 100% !important;
             max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
+            margin: 0 auto 30px auto;
+            padding: 0 20px;
             gap: 20px;
             align-items: flex-start;
         }
 
-        .three-column-layout {
-            display: flex !important;
-            flex-wrap: nowrap !important;
-            width: 100% !important;
-            gap: 20px !important;
-            align-items: flex-start !important;
-        }
-
-        .column {
-            flex: 1 1 0 !important;
+        .top-column {
+            flex: 1;
             display: flex;
             flex-direction: column;
-            gap: 20px;
-            min-width: 0 !important;
-            max-width: none !important;
+            min-width: 320px;
         }
 
-        .column-1 {
-            flex: 1 1 33.33% !important;
+        .top-column-1 {
+            flex: 1 1 33.33%;
         }
 
-        .column-2 {
-            flex: 1 1 33.33% !important;
+        .top-column-2 {
+            flex: 1 1 33.33%;
         }
 
-        .column-3 {
-            flex: 1 1 33.33% !important;
+        .top-column-3 {
+            flex: 1 1 33.33%;
+        }
+
+        .divider {
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent 0%, var(--primary-color) 50%, transparent 100%);
+            margin: 40px 0;
+            opacity: 0.3;
+        }
+
+        .bottom-section {
+            width: 100%;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 20px;
         }
 
         .card {
@@ -895,33 +900,59 @@ HTML_TEMPLATE = '''
             margin-top: 4px;
         }
 
-        /* Media queries para manter 3 colunas */
+        /* Media queries para nova estrutura */
         @media (max-width: 1024px) {
-            .container, .three-column-layout {
-                gap: 15px !important;
+            .top-section {
+                gap: 15px;
+                padding: 0 15px;
+            }
+
+            .bottom-section {
+                padding: 0 15px;
             }
 
             .card {
-                margin-bottom: 15px;
                 padding: 20px;
             }
         }
 
-        /* Apenas para smartphones muito pequenos */
-        @media (max-width: 500px) {
-            .container, .three-column-layout {
+        /* Responsivo: empilhar colunas em telas pequenas */
+        @media (max-width: 900px) {
+            .top-section {
                 flex-direction: column !important;
-                flex-wrap: wrap !important;
+                gap: 20px;
             }
 
-            .column-1, .column-2, .column-3 {
+            .top-column {
+                min-width: auto !important;
+            }
+
+            .top-column-1, .top-column-2, .top-column-3 {
                 flex: 1 1 100% !important;
                 width: 100% !important;
-                min-width: auto !important;
             }
 
             .header h1 {
                 font-size: 1.8rem;
+            }
+
+            .card {
+                padding: 20px;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .divider {
+                margin: 30px 0;
+            }
+        }
+
+        /* Para telas muito pequenas */
+        @media (max-width: 600px) {
+            .top-section, .bottom-section {
+                padding: 0 10px;
             }
 
             .card {
@@ -930,6 +961,14 @@ HTML_TEMPLATE = '''
 
             .stats-grid {
                 grid-template-columns: 1fr;
+            }
+
+            .header h1 {
+                font-size: 1.6rem;
+            }
+
+            .divider {
+                margin: 20px 0;
             }
         }
 
@@ -1323,188 +1362,193 @@ HTML_TEMPLATE = '''
         </div>
     {% endif %}
 
-    <div class="container three-column-layout">
-        <!-- COLUNA 1: ESTATÍSTICAS + GERENCIAR EMAILS -->
-        <div class="column column-1">
-          <div class="card">
-            <h2>📊 Estatísticas da Busca</h2>
+    <!-- SEÇÃO SUPERIOR: 3 COLUNAS LADO A LADO -->
+    <div class="top-section">
+        <!-- COLUNA 1: ESTATÍSTICAS DA BUSCA -->
+        <div class="top-column top-column-1">
+            <div class="card">
+                <h2>📊 Estatísticas da Busca</h2>
 
-            <!-- Botão de Atualização -->
-            <form method="post" style="margin-bottom: 20px;" id="refreshCacheForm">
-                <input type="hidden" name="action" value="refresh_cache">
-                <button type="submit" style="background: var(--warning-color); width: 100%;" id="refreshCacheBtn">
-                    🔄 Atualizar Cache DOU
-                </button>
-            </form>
-            <div id="refreshProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
+                <!-- Botão de Atualização -->
+                <form method="post" style="margin-bottom: 20px;" id="refreshCacheForm">
+                    <input type="hidden" name="action" value="refresh_cache">
+                    <button type="submit" style="background: var(--warning-color); width: 100%;" id="refreshCacheBtn">
+                        🔄 Atualizar Cache DOU
+                    </button>
+                </form>
+                <div id="refreshProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
 
-            {% if search_stats %}
-                {% if search_stats.get('error') %}
-                    <div style="padding: 15px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: var(--radius); color: var(--error-color); margin-bottom: 20px;">
-                        <h4>🚨 Erro no Processamento</h4>
-                        <p><strong>Erro:</strong> {{ search_stats.get('error', 'Unknown error') }}</p>
-                        <details style="margin-top: 10px;">
-                            <summary style="cursor: pointer; color: var(--primary-color);">Ver detalhes técnicos</summary>
-                            <pre style="white-space: pre-wrap; font-size: 0.8rem; margin-top: 10px;">{{ search_stats.get('traceback', 'No traceback available') }}</pre>
-                        </details>
-                        <p style="margin-top: 10px;"><a href="/debug" target="_blank" style="color: var(--primary-color);">🔧 Ir para página de debug</a></p>
-                    </div>
-                {% else %}
-                    <div class="stats-grid">
-                        <div class="stat-item">
-                            <span class="stat-number">{{ search_stats.get('xml_files_processed', 0) }}</span>
-                            <div class="stat-label">Arquivos XML<br>Processados</div>
+                {% if search_stats %}
+                    {% if search_stats.get('error') %}
+                        <div style="padding: 15px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: var(--radius); color: var(--error-color); margin-bottom: 20px;">
+                            <h4>🚨 Erro no Processamento</h4>
+                            <p><strong>Erro:</strong> {{ search_stats.get('error', 'Unknown error') }}</p>
+                            <details style="margin-top: 10px;">
+                                <summary style="cursor: pointer; color: var(--primary-color);">Ver detalhes técnicos</summary>
+                                <pre style="white-space: pre-wrap; font-size: 0.8rem; margin-top: 10px;">{{ search_stats.get('traceback', 'No traceback available') }}</pre>
+                            </details>
+                            <p style="margin-top: 10px;"><a href="/debug" target="_blank" style="color: var(--primary-color);">🔧 Ir para página de debug</a></p>
                         </div>
-                        <div class="stat-item">
-                            <span class="stat-number">{{ search_stats.get('total_articles_extracted', 0) }}</span>
-                            <div class="stat-label">Artigos<br>Extraídos</div>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-number">{{ search_stats.get('sections_downloaded', 0) }}</span>
-                            <div class="stat-label">Seções DOU<br>Baixadas</div>
-                        </div>
-                        <div class="stat-item">
-                            <span class="stat-number">{{ search_stats.get('matches_found', 0) }}</span>
-                            <div class="stat-label">Matches<br>Encontrados</div>
-                        </div>
-                    </div>
-
-                    <div style="margin-top: 20px; padding: 15px; background: var(--background); border-radius: var(--radius); border: 1px solid var(--border);">
-                        <h4>⏱️ Tempo de Processamento</h4>
-                        <ul style="margin: 10px 0; padding-left: 20px; color: var(--text-secondary); font-size: 0.9rem;">
-                            <li>Download: {{ search_stats.get('download_time', 0) }}s</li>
-                            <li>Extração: {{ search_stats.get('extraction_time', 0) }}s</li>
-                            <li>Busca: {{ search_stats.get('search_time', 0) }}s</li>
-                            <li><strong>Total: {{ (search_stats.get('download_time', 0) + search_stats.get('extraction_time', 0) + search_stats.get('search_time', 0))|round(2) }}s</strong></li>
-                        </ul>
-                    </div>
-                {% endif %}
-            {% else %}
-                <div style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 40px;">
-                    📊 Faça uma busca para ver as estatísticas de processamento
-                </div>
-            {% endif %}
-          </div>
-
-          <!-- GERENCIAR EMAILS (mesma coluna) -->
-          <div class="card" style="margin-top: 7px;">
-            <h2>📧 Gerenciar Emails</h2>
-
-            <form method="post">
-                <div class="form-group">
-                    <label for="email_register">Cadastrar novo email</label>
-                    <input type="email" id="email_register" name="email" placeholder="Digite o email" required>
-                </div>
-                <button type="submit" name="action" value="register">Cadastrar</button>
-            </form>
-
-            <form method="post" style="margin-top: 20px;">
-                <div class="form-group">
-                    <label for="email_remove">Remover email</label>
-                    <input type="email" id="email_remove" name="email" placeholder="Digite o email para remover" required>
-                </div>
-                <button type="submit" name="action" value="unregister" style="background: var(--error-color);">Remover</button>
-            </form>
-
-            <div class="email-list">
-                <h3>Emails e Termos de Busca</h3>
-                {% if emails %}
-                    {% for email in emails %}
-                        <div class="email-card" style="margin-bottom: 20px; padding: 15px; background: var(--background); border-radius: var(--radius); border: 1px solid var(--border);">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                <span class="email" style="font-weight: 600;">{{ email }}</span>
-                                <form method="post" style="display: inline; margin: 0;">
-                                    <input type="hidden" name="email" value="{{ email }}">
-                                    <button type="submit" name="action" value="unregister" class="remove-btn" style="background: var(--error-color); color: white; border: none; padding: 5px 10px; border-radius: var(--radius-sm); font-size: 0.8rem;">Remover Email</button>
-                                </form>
+                    {% else %}
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <span class="stat-number">{{ search_stats.get('xml_files_processed', 0) }}</span>
+                                <div class="stat-label">Arquivos XML<br>Processados</div>
                             </div>
-
-                            <!-- Termos de busca para este email -->
-                            <div class="email-terms">
-                                <h4 style="margin: 10px 0 5px 0; font-size: 0.9rem; color: var(--text-secondary);">Termos de Busca:</h4>
-                                {% if email_terms[email] %}
-                                    <div class="terms-list" style="margin-bottom: 10px;">
-                                        {% for term in email_terms[email] %}
-                                            <span style="display: inline-block; background: var(--primary-color); color: white; padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; margin: 2px 4px 2px 0;">
-                                                {{ term }}
-                                                <form method="post" style="display: inline; margin: 0;">
-                                                    <input type="hidden" name="email" value="{{ email }}">
-                                                    <input type="hidden" name="term" value="{{ term }}">
-                                                    <button type="submit" name="action" value="remove_term" style="background: none; border: none; color: white; margin-left: 5px; font-size: 0.8rem; cursor: pointer;">×</button>
-                                                </form>
-                                            </span>
-                                        {% endfor %}
-                                    </div>
-                                {% else %}
-                                    <p style="font-size: 0.8rem; color: var(--text-secondary); font-style: italic; margin: 5px 0;">Nenhum termo cadastrado.</p>
-                                {% endif %}
-
-                                <!-- Formulário para adicionar novo termo -->
-                                <form method="post" style="display: flex; gap: 5px; margin-top: 10px;">
-                                    <input type="hidden" name="email" value="{{ email }}">
-                                    <input type="text" name="term" placeholder="Novo termo de busca" style="flex: 1; padding: 6px 10px; font-size: 0.8rem; border: 1px solid var(--border); border-radius: var(--radius-sm);" required>
-                                    <button type="submit" name="action" value="add_term" style="background: var(--success-color); color: white; border: none; padding: 6px 12px; border-radius: var(--radius-sm); font-size: 0.8rem;">Adicionar</button>
-                                </form>
+                            <div class="stat-item">
+                                <span class="stat-number">{{ search_stats.get('total_articles_extracted', 0) }}</span>
+                                <div class="stat-label">Artigos<br>Extraídos</div>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-number">{{ search_stats.get('sections_downloaded', 0) }}</span>
+                                <div class="stat-label">Seções DOU<br>Baixadas</div>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-number">{{ search_stats.get('matches_found', 0) }}</span>
+                                <div class="stat-label">Matches<br>Encontrados</div>
                             </div>
                         </div>
-                    {% endfor %}
+
+                        <div style="margin-top: 20px; padding: 15px; background: var(--background); border-radius: var(--radius); border: 1px solid var(--border);">
+                            <h4>⏱️ Tempo de Processamento</h4>
+                            <ul style="margin: 10px 0; padding-left: 20px; color: var(--text-secondary); font-size: 0.9rem;">
+                                <li>Download: {{ search_stats.get('download_time', 0) }}s</li>
+                                <li>Extração: {{ search_stats.get('extraction_time', 0) }}s</li>
+                                <li>Busca: {{ search_stats.get('search_time', 0) }}s</li>
+                                <li><strong>Total: {{ (search_stats.get('download_time', 0) + search_stats.get('extraction_time', 0) + search_stats.get('search_time', 0))|round(2) }}s</strong></li>
+                            </ul>
+                        </div>
+                    {% endif %}
                 {% else %}
-                    <p style="color: var(--text-secondary); font-style: italic;">Nenhum email cadastrado.</p>
+                    <div style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 40px;">
+                        📊 Faça uma busca para ver as estatísticas de processamento
+                    </div>
                 {% endif %}
             </div>
-
-          </div>
         </div>
 
         <!-- COLUNA 2: BUSCAR NO DOU -->
-        <div class="column column-2">
+        <div class="top-column top-column-2">
             <div class="card">
                 <h2>🔍 Buscar no DOU</h2>
-            <form method="post" id="searchForm">
-                <div class="form-group">
-                    <label for="search_term">Termo de busca</label>
-                    <input type="text" id="search_term" name="search_term"
-                           placeholder="Digite o termo de busca"
-                           value="{{ search_term or '' }}" required>
-                </div>
-                <div class="form-group">
-                    <label>
-                        <input type="checkbox" name="use_ai" {{ 'checked' if use_ai else '' }}>
-                        Usar IA para resumos (OpenAI)
-                    </label>
-                </div>
-                <button type="submit" id="searchBtn">Buscar</button>
-            </form>
-            <div id="searchProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
+                <form method="post" id="searchForm">
+                    <div class="form-group">
+                        <label for="search_term">Termo de busca</label>
+                        <input type="text" id="search_term" name="search_term"
+                               placeholder="Digite o termo de busca"
+                               value="{{ search_term or '' }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" name="use_ai" {{ 'checked' if use_ai else '' }}>
+                            Usar IA para resumos (OpenAI)
+                        </label>
+                    </div>
+                    <button type="submit" id="searchBtn">Buscar</button>
+                </form>
+                <div id="searchProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
 
-            <!-- Botão para buscar todos os termos cadastrados -->
-            <form method="post" style="margin-top: 15px;">
-                <button type="submit" name="action" value="search_all_terms" style="background: var(--success-color); width: 100%;">
-                    🔍 Buscar Todos os Termos Cadastrados
-                </button>
-            </form>
+                <!-- Botão para buscar todos os termos cadastrados -->
+                <form method="post" style="margin-top: 15px;">
+                    <button type="submit" name="action" value="search_all_terms" style="background: var(--success-color); width: 100%;">
+                        🔍 Buscar Todos os Termos Cadastrados
+                    </button>
+                </form>
 
-            <div style="margin-top: 20px;">
-                <div class="suggestions-panel">
-                    <strong>Sugestões de busca:</strong>
-                    <div style="margin-top: 10px;">
-                        <span class="suggestion-chip" onclick="setTerm('23001.000069/2025-95')">23001.000069/2025-95</span>
-                        <span class="suggestion-chip" onclick="setTerm('Associação Brasileira das Faculdades (Abrafi)')">Associação Brasileira das Faculdades (Abrafi)</span>
-                        <span class="suggestion-chip" onclick="setTerm('Resolução CNE/CES nº 2/2024')">Resolução CNE/CES nº 2/2024</span>
-                        <span class="suggestion-chip" onclick="setTerm('reconhecimento de diplomas de pós-graduação stricto sensu obtidos no exterior')">reconhecimento de diplomas...</span>
-                        <span class="suggestion-chip" onclick="setTerm('589/2025')">589/2025</span>
-                        <span class="suggestion-chip" onclick="setTerm('relatado em 4 de setembro de 2025')">relatado em 4 de setembro de 2025</span>
+                <div style="margin-top: 20px;">
+                    <div class="suggestions-panel">
+                        <strong>Sugestões de busca:</strong>
+                        <div style="margin-top: 10px;">
+                            <span class="suggestion-chip" onclick="setTerm('23001.000069/2025-95')">23001.000069/2025-95</span>
+                            <span class="suggestion-chip" onclick="setTerm('Associação Brasileira das Faculdades (Abrafi)')">Associação Brasileira das Faculdades (Abrafi)</span>
+                            <span class="suggestion-chip" onclick="setTerm('Resolução CNE/CES nº 2/2024')">Resolução CNE/CES nº 2/2024</span>
+                            <span class="suggestion-chip" onclick="setTerm('reconhecimento de diplomas de pós-graduação stricto sensu obtidos no exterior')">reconhecimento de diplomas...</span>
+                            <span class="suggestion-chip" onclick="setTerm('589/2025')">589/2025</span>
+                            <span class="suggestion-chip" onclick="setTerm('relatado em 4 de setembro de 2025')">relatado em 4 de setembro de 2025</span>
+                        </div>
                     </div>
                 </div>
-            </form>
-
             </div>
         </div>
 
-        <!-- COLUNA 3: RESULTADOS ENCONTRADOS -->
-        <div class="column column-3">
+        <!-- COLUNA 3: GERENCIAR EMAILS -->
+        <div class="top-column top-column-3">
             <div class="card">
-                <h2>📋 Resultados Encontrados</h2>
+                <h2>📧 Gerenciar Emails</h2>
+
+                <form method="post">
+                    <div class="form-group">
+                        <label for="email_register">Cadastrar novo email</label>
+                        <input type="email" id="email_register" name="email" placeholder="Digite o email" required>
+                    </div>
+                    <button type="submit" name="action" value="register">Cadastrar</button>
+                </form>
+
+                <form method="post" style="margin-top: 20px;">
+                    <div class="form-group">
+                        <label for="email_remove">Remover email</label>
+                        <input type="email" id="email_remove" name="email" placeholder="Digite o email para remover" required>
+                    </div>
+                    <button type="submit" name="action" value="unregister" style="background: var(--error-color);">Remover</button>
+                </form>
+
+                <div class="email-list">
+                    <h3>Emails e Termos de Busca</h3>
+                    {% if emails %}
+                        {% for email in emails %}
+                            <div class="email-card" style="margin-bottom: 20px; padding: 15px; background: var(--background); border-radius: var(--radius); border: 1px solid var(--border);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                    <span class="email" style="font-weight: 600;">{{ email }}</span>
+                                    <form method="post" style="display: inline; margin: 0;">
+                                        <input type="hidden" name="email" value="{{ email }}">
+                                        <button type="submit" name="action" value="unregister" class="remove-btn" style="background: var(--error-color); color: white; border: none; padding: 5px 10px; border-radius: var(--radius-sm); font-size: 0.8rem;">Remover Email</button>
+                                    </form>
+                                </div>
+
+                                <!-- Termos de busca para este email -->
+                                <div class="email-terms">
+                                    <h4 style="margin: 10px 0 5px 0; font-size: 0.9rem; color: var(--text-secondary);">Termos de Busca:</h4>
+                                    {% if email_terms[email] %}
+                                        <div class="terms-list" style="margin-bottom: 10px;">
+                                            {% for term in email_terms[email] %}
+                                                <span style="display: inline-block; background: var(--primary-color); color: white; padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; margin: 2px 4px 2px 0;">
+                                                    {{ term }}
+                                                    <form method="post" style="display: inline; margin: 0;">
+                                                        <input type="hidden" name="email" value="{{ email }}">
+                                                        <input type="hidden" name="term" value="{{ term }}">
+                                                        <button type="submit" name="action" value="remove_term" style="background: none; border: none; color: white; margin-left: 5px; font-size: 0.8rem; cursor: pointer;">×</button>
+                                                    </form>
+                                                </span>
+                                            {% endfor %}
+                                        </div>
+                                    {% else %}
+                                        <p style="font-size: 0.8rem; color: var(--text-secondary); font-style: italic; margin: 5px 0;">Nenhum termo cadastrado.</p>
+                                    {% endif %}
+
+                                    <!-- Formulário para adicionar novo termo -->
+                                    <form method="post" style="display: flex; gap: 5px; margin-top: 10px;">
+                                        <input type="hidden" name="email" value="{{ email }}">
+                                        <input type="text" name="term" placeholder="Novo termo de busca" style="flex: 1; padding: 6px 10px; font-size: 0.8rem; border: 1px solid var(--border); border-radius: var(--radius-sm);" required>
+                                        <button type="submit" name="action" value="add_term" style="background: var(--success-color); color: white; border: none; padding: 6px 12px; border-radius: var(--radius-sm); font-size: 0.8rem;">Adicionar</button>
+                                    </form>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <p style="color: var(--text-secondary); font-style: italic;">Nenhum email cadastrado.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LINHA DIVISÓRIA -->
+    <div class="divider"></div>
+
+    <!-- SEÇÃO INFERIOR: RESULTADOS ENCONTRADOS (FULL WIDTH) -->
+    <div class="bottom-section">
+        <div class="card">
+            <h2>📋 Resultados Encontrados</h2>
             {% if results %}
                 <div class="results">
                     <h3>Resultados da Busca ({{ results|length }})</h3>
@@ -1536,7 +1580,6 @@ HTML_TEMPLATE = '''
                     Nenhum resultado para exibir.
                 </div>
             {% endif %}
-            </div>
         </div>
     </div>
 
