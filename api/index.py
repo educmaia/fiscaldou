@@ -1710,7 +1710,41 @@ def home():
                     print(f"[ERROR] Search all terms failed: {str(e)}")
                     message = f"Erro na busca por todos os termos: {str(e)}"
                     search_stats = {'error': str(e)}
-            
+
+            elif 'action' in request.form and request.form.get('action') == 'search_all_suggestions':
+                # Search for all predefined suggestions
+                try:
+                    # Lista das sugestões predefinidas
+                    suggestion_terms = [
+                        "23001.000069/2025-95",
+                        "Associação Brasileira das Faculdades (Abrafi)",
+                        "Resolução CNE/CES nº 2/2024",
+                        "reconhecimento de diplomas de pós-graduação stricto sensu obtidos no exterior",
+                        "589/2025",
+                        "relatado em 4 de setembro de 2025"
+                    ]
+
+                    print(f"[DEBUG] Searching for all suggestions: {suggestion_terms}")
+                    matches, search_stats = find_matches_vercel(suggestion_terms)
+
+                    if matches:
+                        # Clean HTML from summaries and snippets
+                        for result in matches:
+                            if 'snippets' in result and result['snippets']:
+                                result['snippets'] = [clean_html(snippet) for snippet in result['snippets']]
+                            # Add summary
+                            result['summary'] = f'Documento oficial relacionado aos termos: {", ".join(result["terms_matched"])}'
+
+                        search_results = matches
+                        search_term = ", ".join(suggestion_terms[:3]) + ("..." if len(suggestion_terms) > 3 else "")
+                        message = f"Busca por todas as sugestões: {len(matches)} artigos encontrados para {len(suggestion_terms)} termos sugeridos."
+                    else:
+                        message = f"Nenhum artigo encontrado para as sugestões. Processados {search_stats.get('xml_files_processed', 0)} arquivos XML."
+                except Exception as e:
+                    print(f"[ERROR] Search all suggestions failed: {str(e)}")
+                    message = f"Erro na busca por todas as sugestões: {str(e)}"
+                    search_stats = {'error': str(e)}
+
             elif 'action' in request.form and request.form.get('action') == 'refresh_cache':
                 # Handle cache refresh
                 try:
