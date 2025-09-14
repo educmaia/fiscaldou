@@ -593,20 +593,42 @@ HTML_TEMPLATE = '''
         }
 
         .container {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 25px;
+            display: flex;
+            width: 100%;
             max-width: 1400px;
             margin: 0 auto;
             padding: 20px;
-            align-items: start;
+            gap: 25px;
+            align-items: flex-start;
         }
 
         .three-column-layout {
-            display: grid !important;
-            grid-template-columns: 1fr 1fr 1fr !important;
+            display: flex !important;
+            width: 100% !important;
             gap: 25px !important;
-            align-items: start !important;
+            align-items: flex-start !important;
+        }
+
+        .column {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+        }
+
+        .column-1 {
+            width: 33.33%;
+            min-width: 300px;
+        }
+
+        .column-2 {
+            width: 33.33%;
+            min-width: 300px;
+        }
+
+        .column-3 {
+            width: 33.33%;
+            min-width: 300px;
         }
 
         .card {
@@ -872,16 +894,9 @@ HTML_TEMPLATE = '''
             margin-top: 4px;
         }
 
-        @media (max-width: 1400px) {
-            .container, .three-column-layout {
-                grid-template-columns: 1fr 1fr 1fr;
-                gap: 20px;
-            }
-        }
-
+        /* Media queries simplificados */
         @media (max-width: 1024px) {
             .container, .three-column-layout {
-                grid-template-columns: 1fr 1fr 1fr;
                 gap: 15px;
             }
 
@@ -891,27 +906,15 @@ HTML_TEMPLATE = '''
             }
         }
 
-        /* Sistema responsivo inteligente - força 3 colunas sempre que possível */
-        .container.force-three-columns {
-            grid-template-columns: 1fr 1fr 1fr !important;
-            gap: 20px !important;
-        }
-
-        .container.force-two-columns {
-            grid-template-columns: 1fr 1fr !important;
-            gap: 15px !important;
-        }
-
-        .container.force-one-column {
-            grid-template-columns: 1fr !important;
-            gap: 20px !important;
-        }
-
-        /* Fallback para telas muito pequenas apenas */
-        @media (max-width: 400px) {
+        /* Responsivo simples - apenas para telas muito pequenas */
+        @media (max-width: 600px) {
             .container, .three-column-layout {
-                grid-template-columns: 1fr !important;
-                gap: 15px !important;
+                flex-direction: column !important;
+            }
+
+            .column-1, .column-2, .column-3 {
+                width: 100% !important;
+                min-width: auto !important;
             }
 
             .header h1 {
@@ -1232,111 +1235,8 @@ HTML_TEMPLATE = '''
             return string.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
         }
 
-        // Sistema automático de detecção de tela e ajuste de layout
-        function adjustLayoutBasedOnScreenSize() {
-            const container = document.querySelector('.container.three-column-layout');
-            if (!container) return;
-
-            const screenWidth = window.innerWidth;
-            const screenHeight = window.innerHeight;
-
-            // Remove classes anteriores
-            container.classList.remove('force-three-columns', 'force-two-columns', 'force-one-column');
-
-            console.log(`[Layout] Screen: ${screenWidth}x${screenHeight}`);
-
-            // Lógica inteligente baseada no tamanho real da tela
-            if (screenWidth >= 1200) {
-                // Telas grandes: sempre 3 colunas
-                container.classList.add('force-three-columns');
-                console.log('[Layout] Aplicando: 3 colunas (tela grande)');
-            } else if (screenWidth >= 900) {
-                // Telas médias: 3 colunas se houver altura suficiente, senão 2
-                if (screenHeight >= 600) {
-                    container.classList.add('force-three-columns');
-                    console.log('[Layout] Aplicando: 3 colunas (tela média com altura suficiente)');
-                } else {
-                    container.classList.add('force-two-columns');
-                    console.log('[Layout] Aplicando: 2 colunas (tela média, pouca altura)');
-                }
-            } else if (screenWidth >= 700) {
-                // Telas tablets: 2 colunas
-                container.classList.add('force-two-columns');
-                console.log('[Layout] Aplicando: 2 colunas (tablet)');
-            } else {
-                // Telas pequenas: 1 coluna
-                container.classList.add('force-one-column');
-                console.log('[Layout] Aplicando: 1 coluna (mobile)');
-            }
-
-            // Forçar 3 colunas em Full HD e superiores independente de outras regras
-            if (screenWidth >= 1920) {
-                container.classList.remove('force-two-columns', 'force-one-column');
-                container.classList.add('force-three-columns');
-                console.log('[Layout] FORÇANDO: 3 colunas (Full HD+)');
-            }
-        }
-
         // Event listeners
         document.addEventListener('DOMContentLoaded', function() {
-            // Aplicar layout inteligente imediatamente
-            adjustLayoutBasedOnScreenSize();
-
-            // Reaplicar quando a janela for redimensionada
-            let resizeTimeout;
-            window.addEventListener('resize', function() {
-                clearTimeout(resizeTimeout);
-                resizeTimeout = setTimeout(adjustLayoutBasedOnScreenSize, 150);
-            });
-
-            // Debug: mostrar info da tela no console e na página
-            console.log(`[Layout] Inicializado - Tela: ${window.innerWidth}x${window.innerHeight}`);
-            console.log(`[Layout] User Agent: ${navigator.userAgent}`);
-            console.log(`[Layout] Device Pixel Ratio: ${window.devicePixelRatio}`);
-
-            // Criar indicador visual de debug (removível)
-            const debugInfo = document.createElement('div');
-            debugInfo.id = 'layout-debug';
-            debugInfo.style.cssText = `
-                position: fixed;
-                top: 10px;
-                right: 10px;
-                background: rgba(0,0,0,0.8);
-                color: white;
-                padding: 10px;
-                border-radius: 5px;
-                font-size: 12px;
-                z-index: 9999;
-                cursor: pointer;
-                font-family: monospace;
-            `;
-            debugInfo.innerHTML = `
-                📱 Tela: ${window.innerWidth}x${window.innerHeight}<br>
-                📊 Layout: Detectando...<br>
-                🖱️ Clique para remover
-            `;
-            debugInfo.onclick = () => debugInfo.remove();
-            document.body.appendChild(debugInfo);
-
-            // Atualizar debug info quando layout mudar
-            const originalAdjust = adjustLayoutBasedOnScreenSize;
-            adjustLayoutBasedOnScreenSize = function() {
-                originalAdjust();
-                const debugEl = document.getElementById('layout-debug');
-                if (debugEl) {
-                    const container = document.querySelector('.container.three-column-layout');
-                    let layoutType = 'Padrão';
-                    if (container?.classList.contains('force-three-columns')) layoutType = '3 Colunas';
-                    else if (container?.classList.contains('force-two-columns')) layoutType = '2 Colunas';
-                    else if (container?.classList.contains('force-one-column')) layoutType = '1 Coluna';
-
-                    debugEl.innerHTML = `
-                        📱 Tela: ${window.innerWidth}x${window.innerHeight}<br>
-                        📊 Layout: ${layoutType}<br>
-                        🖱️ Clique para remover
-                    `;
-                }
-            };
             // Fechar modal clicando no X
             const closeBtn = document.querySelector('.close');
             if (closeBtn) {
@@ -1422,7 +1322,7 @@ HTML_TEMPLATE = '''
 
     <div class="container three-column-layout">
         <!-- COLUNA 1: ESTATÍSTICAS + GERENCIAR EMAILS -->
-        <div>
+        <div class="column column-1">
           <div class="card">
             <h2>📊 Estatísticas da Busca</h2>
 
@@ -1554,8 +1454,9 @@ HTML_TEMPLATE = '''
         </div>
 
         <!-- COLUNA 2: BUSCAR NO DOU -->
-        <div class="card">
-            <h2>🔍 Buscar no DOU</h2>
+        <div class="column column-2">
+            <div class="card">
+                <h2>🔍 Buscar no DOU</h2>
             <form method="post" id="searchForm">
                 <div class="form-group">
                     <label for="search_term">Termo de busca</label>
@@ -1594,13 +1495,13 @@ HTML_TEMPLATE = '''
                 </div>
             </form>
 
-            
+            </div>
         </div>
 
         <!-- COLUNA 3: RESULTADOS ENCONTRADOS -->
-
-        <div class="card">
-            <h2>📋 Resultados Encontrados</h2>
+        <div class="column column-3">
+            <div class="card">
+                <h2>📋 Resultados Encontrados</h2>
             {% if results %}
                 <div class="results">
                     <h3>Resultados da Busca ({{ results|length }})</h3>
@@ -1632,6 +1533,7 @@ HTML_TEMPLATE = '''
                     Nenhum resultado para exibir.
                 </div>
             {% endif %}
+            </div>
         </div>
     </div>
 
