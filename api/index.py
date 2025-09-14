@@ -1347,6 +1347,23 @@ HTML_TEMPLATE = '''
             } catch (err) {
                 // Silenciar erros não críticos
             }
+
+            // Mostrar mensagem de processamento ao submeter busca de todas as sugestões
+            try {
+                const suggestionsForm = document.getElementById('searchSuggestionsForm');
+                const suggestionsBtn = document.getElementById('searchSuggestionsBtn');
+                const suggestionsMsg = document.getElementById('suggestionsProcessing');
+                if (suggestionsForm && suggestionsBtn && suggestionsMsg) {
+                    suggestionsForm.addEventListener('submit', function() {
+                        suggestionsBtn.disabled = true;
+                        suggestionsBtn.textContent = '🔎 Buscando todas as sugestões...';
+                        suggestionsMsg.innerHTML = '<span class="spinner"></span>Download em andamento. Essa operação dura em torno de 20 segundos.';
+                        suggestionsMsg.style.display = 'block';
+                    });
+                }
+            } catch (err) {
+                // Silenciar erros não críticos
+            }
         });
     </script>
 </head>
@@ -1443,11 +1460,12 @@ HTML_TEMPLATE = '''
                 <div id="searchProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
 
                 <!-- Botão para buscar todas as sugestões -->
-                <form method="post" style="margin-top: 15px;">
-                    <button type="submit" name="action" value="search_all_suggestions" style="background: var(--success-color); width: 100%;">
+                <form method="post" style="margin-top: 15px;" id="searchSuggestionsForm">
+                    <button type="submit" name="action" value="search_all_suggestions" style="background: var(--success-color); width: 100%;" id="searchSuggestionsBtn">
                         🔍 Buscar Todas as Sugestões
                     </button>
                 </form>
+                <div id="suggestionsProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
 
                 <div style="margin-top: 20px;">
                     <div class="suggestions-panel">
