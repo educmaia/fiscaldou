@@ -891,7 +891,8 @@ HTML_TEMPLATE = '''
             }
         }
 
-        @media (max-width: 768px) {
+        /* Manter 3 colunas até telas muito pequenas - adequado para monitores Full HD modernos */
+        @media (max-width: 480px) {
             .container, .three-column-layout {
                 grid-template-columns: 1fr;
                 gap: 20px;
