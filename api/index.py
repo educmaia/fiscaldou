@@ -1296,7 +1296,7 @@ HTML_TEMPLATE = '''
           </div>
 
           <!-- GERENCIAR EMAILS (mesma coluna) -->
-          <div class="card">
+          <div class="card" style="margin-top: 7px;">
             <h2>📧 Gerenciar Emails</h2>
 
             <form method="post">
