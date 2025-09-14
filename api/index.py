@@ -1438,12 +1438,6 @@ HTML_TEMPLATE = '''
                                placeholder="Digite o termo de busca"
                                value="{{ search_term or '' }}" required>
                     </div>
-                    <div class="form-group">
-                        <label>
-                            <input type="checkbox" name="use_ai" {{ 'checked' if use_ai else '' }}>
-                            Usar IA para resumos (OpenAI)
-                        </label>
-                    </div>
                     <button type="submit" id="searchBtn">Buscar</button>
                 </form>
                 <div id="searchProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
