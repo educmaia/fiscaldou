@@ -9,6 +9,9 @@ from datetime import datetime, date, timedelta
 from pathlib import Path
 import tempfile
 import io
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 app = Flask(__name__)
 
@@ -462,6 +465,146 @@ def find_matches_vercel(search_terms):
     except Exception as e:
         print(f"Error in find_matches_vercel: {e}")
         return [], stats
+
+# ----------------------
+# Email helper (SMTP)
+# ----------------------
+SMTP_SERVER = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
+SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
+SMTP_USER = os.getenv('SMTP_USER')
+SMTP_PASS = os.getenv('SMTP_PASS')
+
+def send_email_html(recipient, subject, html_body):
+    if not (SMTP_SERVER and SMTP_PORT and SMTP_USER and SMTP_PASS):
+        print("[ERROR] SMTP environment variables not fully configured.")
+        return False
+
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = subject
+    msg['From'] = SMTP_USER
+    msg['To'] = recipient
+    msg.attach(MIMEText(html_body, 'html'))
+
+    try:
+        if SMTP_PORT == 465:
+            server = smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT)
+        else:
+            server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+            server.ehlo()
+            try:
+                server.starttls()
+                server.ehlo()
+            except Exception as e:
+                print(f"[WARN] STARTTLS not available/failed: {e}")
+
+        server.login(SMTP_USER, SMTP_PASS)
+        server.sendmail(SMTP_USER, recipient, msg.as_string())
+        server.quit()
+        print(f"[INFO] Email sent to {recipient}")
+        return True
+    except Exception as e:
+        print(f"[ERROR] Email send failed for {recipient}: {e}")
+        try:
+            server.quit()
+        except Exception:
+            pass
+        return False
+
+def format_email_body_html(email, date_str, matches):
+    if not matches:
+        return f"""
+        <html><body>
+        <h2>DOU Notificações - {date_str}</h2>
+        <p>Olá {email},</p>
+        <p>Nenhuma ocorrência encontrada hoje no DOU para os seus termos.</p>
+        <p>Até breve,</p>
+        </body></html>
+        """
+
+    parts = [
+        f"<h2>DOU Notificações - {date_str}</h2>",
+        f"<p>Olá {email},</p>",
+        f"<p>Foram encontradas {len(matches)} ocorrência(s) hoje:</p>"
+    ]
+    for i, m in enumerate(matches, 1):
+        art = m.get('article', {})
+        terms = ', '.join(m.get('terms_matched', []))
+        summary = m.get('summary') or ''
+        parts.append(
+            f"<div style='border:1px solid #ddd;border-radius:6px;padding:12px;margin:10px 0;'>"
+            f"<h3>{i}. {art.get('filename','(sem nome)')} - {art.get('section','')}</h3>"
+            f"<p><strong>Termos:</strong> {terms}</p>"
+            f"<p><strong>Resumo:</strong><br>{summary}</p>"
+            f"</div>"
+        )
+    parts.append("<p>Até breve,</p>")
+    return f"<html><body>{''.join(parts)}</body></html>"
+
+# ----------------------
+# Cron route
+# ----------------------
+@app.route('/api/cron/daily', methods=['GET'])
+def cron_daily():
+    """
+    Vercel Cron target. Fetch emails and terms from Edge Config,
+    run search and summaries per email, and send notifications.
+    """
+    try:
+        # Optional basic guard for non-cron calls
+        # Vercel adds header 'x-vercel-cron' on cron invocations
+        is_cron = request.headers.get('x-vercel-cron') is not None or request.args.get('force') == '1'
+
+        emails = sorted(list(get_emails_from_edge_config()))
+        if not emails:
+            return ({
+                'ok': True,
+                'message': 'No emails registered in Edge Config',
+                'sent': 0,
+                'isCron': is_cron
+            }, 200)
+
+        # Aggregate stats
+        date_str = date.today().strftime('%d/%m/%Y')
+        total_sent = 0
+        per_email = []
+
+        # If any email has terms, run search once per unique term set? We run per email to respect per-user terms
+        for email in emails:
+            terms = get_search_terms_from_edge_config(email)
+            if not terms:
+                per_email.append({'email': email, 'status': 'no-terms', 'matches': 0})
+                continue
+
+            matches, stats = find_matches_vercel(terms)
+
+            # Summaries (use AI if key configured; summarize.py falls back gracefully)
+            try:
+                from summarize import summarize_matches
+                summarized = summarize_matches(matches)
+            except Exception as e:
+                print(f"[WARN] Summarization failed, sending without summaries: {e}")
+                summarized = matches
+
+            # Prepare and possibly send
+            html = format_email_body_html(email, date_str, summarized)
+            dry_run = request.args.get('dry') == '1'
+
+            sent_ok = True if dry_run else send_email_html(email, f"DOU Notificações - {date_str}", html)
+            if sent_ok:
+                total_sent += 1 if not dry_run else 0
+                per_email.append({'email': email, 'status': 'sent' if not dry_run else 'dry', 'matches': len(summarized), 'stats': stats})
+            else:
+                per_email.append({'email': email, 'status': 'send-failed', 'matches': len(summarized)})
+
+        return ({
+            'ok': True,
+            'isCron': is_cron,
+            'sent': total_sent,
+            'details': per_email
+        }, 200)
+    except Exception as e:
+        print(f"[ERROR] Cron execution failed: {e}")
+        return ({'ok': False, 'error': str(e)}, 500)
 
 def search_dou_demo(search_term):
     """
@@ -1364,6 +1507,23 @@ HTML_TEMPLATE = '''
             } catch (err) {
                 // Silenciar erros não críticos
             }
+
+            // Mostrar mensagem ao enviar teste para todos agora
+            try {
+                const sendAllForm = document.getElementById('sendAllNowForm');
+                const sendAllBtn = document.getElementById('sendAllNowBtn');
+                const sendAllMsg = document.getElementById('sendAllProcessing');
+                if (sendAllForm && sendAllBtn && sendAllMsg) {
+                    sendAllForm.addEventListener('submit', function() {
+                        sendAllBtn.disabled = true;
+                        sendAllBtn.textContent = '▶️ Enviando testes...';
+                        sendAllMsg.innerHTML = '<span class="spinner"></span>Download em andamento. Essa operação dura em torno de 20 segundos.';
+                        sendAllMsg.style.display = 'block';
+                    });
+                }
+            } catch (err) {
+                // Silenciar erros não críticos
+            }
         });
     </script>
 </head>
@@ -1487,6 +1647,13 @@ HTML_TEMPLATE = '''
         <div class="top-column top-column-3">
             <div class="card">
                 <h2>📧 Gerenciar Emails</h2>
+                <!-- Enviar para todos agora -->
+                <form method="post" style="margin-bottom: 15px;" id="sendAllNowForm">
+                    <button type="submit" id="sendAllNowBtn" name="action" value="send_now_all" style="background: var(--success-color); width: 100%;">
+                        ▶️ Enviar teste para todos agora
+                    </button>
+                </form>
+                <div id="sendAllProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
 
                 <form method="post">
                     <div class="form-group">
@@ -1516,6 +1683,11 @@ HTML_TEMPLATE = '''
                                         <button type="submit" name="action" value="unregister" class="remove-btn" style="background: var(--error-color); color: white; border: none; padding: 5px 10px; border-radius: var(--radius-sm); font-size: 0.8rem;">Remover Email</button>
                                     </form>
                                 </div>
+                                <!-- Botão enviar agora para este email -->
+                                <form method="post" style="margin: 8px 0;">
+                                    <input type="hidden" name="email" value="{{ email }}">
+                                    <button type="submit" name="action" value="send_now" style="background: var(--primary-color); color: white; border: none; padding: 8px 12px; border-radius: var(--radius-sm); font-size: 0.85rem;">▶️ Enviar teste agora</button>
+                                </form>
 
                                 <!-- Termos de busca para este email -->
                                 <div class="email-terms">
@@ -1818,6 +1990,53 @@ def home():
                                 message = f'Termo "{term}" não encontrado para {email}.'
                     else:
                         message = "Por favor, forneça um email e termo válidos."
+
+                elif action == 'send_now_all':
+                    # Send test email now for all registered emails
+                    try:
+                        processed = 0
+                        sent = 0
+                        skipped = 0
+                        for em in current_emails:
+                            terms = get_search_terms_from_edge_config(em) if edge_config_available else search_terms_storage.get(em, [])
+                            if not terms:
+                                skipped += 1
+                                continue
+                            matches, _stats = find_matches_vercel(terms)
+                            try:
+                                from summarize import summarize_matches
+                                summarized = summarize_matches(matches)
+                            except Exception:
+                                summarized = matches
+                            html = format_email_body_html(em, date.today().strftime('%d/%m/%Y'), summarized)
+                            ok = send_email_html(em, f"DOU Notificações - {date.today().strftime('%d/%m/%Y')}", html)
+                            sent += 1 if ok else 0
+                            processed += 1
+                        message = f"Envio concluído: {sent}/{processed} emails enviados. {skipped} sem termos."
+                    except Exception as e:
+                        message = f"Erro ao enviar para todos: {str(e)}"
+
+                elif action == 'send_now' and email:
+                    # Send test email now for a specific email
+                    try:
+                        terms = get_search_terms_from_edge_config(email) if edge_config_available else search_terms_storage.get(email, [])
+                        if not terms:
+                            message = f"{email} não possui termos cadastrados."
+                        else:
+                            matches, _stats = find_matches_vercel(terms)
+                            try:
+                                from summarize import summarize_matches
+                                summarized = summarize_matches(matches)
+                            except Exception:
+                                summarized = matches
+                            html = format_email_body_html(email, date.today().strftime('%d/%m/%Y'), summarized)
+                            ok = send_email_html(email, f"DOU Notificações - {date.today().strftime('%d/%m/%Y')}", html)
+                            if ok:
+                                message = f"Email de teste enviado para {email} com {len(summarized)} ocorrência(s)."
+                            else:
+                                message = f"Falha no envio para {email}. Verifique as credenciais SMTP."
+                    except Exception as e:
+                        message = f"Erro ao enviar para {email}: {str(e)}"
 
                 elif action in ['register', 'unregister'] and email:
                     if action == 'register':

@@ -4,6 +4,12 @@
       "runtime": "@vercel/python@4.3.0"
     }
   },
+  "crons": [
+    {
+      "path": "/api/cron/daily",
+      "schedule": "0 11 * * *"
+    }
+  ],
   "routes": [
     {
       "src": "/(.*)",
