@@ -891,19 +891,35 @@ HTML_TEMPLATE = '''
             }
         }
 
-        /* Manter 3 colunas até telas muito pequenas - adequado para monitores Full HD modernos */
-        @media (max-width: 480px) {
+        /* Sistema responsivo inteligente - força 3 colunas sempre que possível */
+        .container.force-three-columns {
+            grid-template-columns: 1fr 1fr 1fr !important;
+            gap: 20px !important;
+        }
+
+        .container.force-two-columns {
+            grid-template-columns: 1fr 1fr !important;
+            gap: 15px !important;
+        }
+
+        .container.force-one-column {
+            grid-template-columns: 1fr !important;
+            gap: 20px !important;
+        }
+
+        /* Fallback para telas muito pequenas apenas */
+        @media (max-width: 400px) {
             .container, .three-column-layout {
-                grid-template-columns: 1fr;
-                gap: 20px;
+                grid-template-columns: 1fr !important;
+                gap: 15px !important;
             }
 
             .header h1 {
-                font-size: 2rem;
+                font-size: 1.8rem;
             }
 
             .card {
-                padding: 20px;
+                padding: 15px;
             }
 
             .stats-grid {
@@ -1216,8 +1232,111 @@ HTML_TEMPLATE = '''
             return string.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
         }
 
+        // Sistema automático de detecção de tela e ajuste de layout
+        function adjustLayoutBasedOnScreenSize() {
+            const container = document.querySelector('.container.three-column-layout');
+            if (!container) return;
+
+            const screenWidth = window.innerWidth;
+            const screenHeight = window.innerHeight;
+
+            // Remove classes anteriores
+            container.classList.remove('force-three-columns', 'force-two-columns', 'force-one-column');
+
+            console.log(`[Layout] Screen: ${screenWidth}x${screenHeight}`);
+
+            // Lógica inteligente baseada no tamanho real da tela
+            if (screenWidth >= 1200) {
+                // Telas grandes: sempre 3 colunas
+                container.classList.add('force-three-columns');
+                console.log('[Layout] Aplicando: 3 colunas (tela grande)');
+            } else if (screenWidth >= 900) {
+                // Telas médias: 3 colunas se houver altura suficiente, senão 2
+                if (screenHeight >= 600) {
+                    container.classList.add('force-three-columns');
+                    console.log('[Layout] Aplicando: 3 colunas (tela média com altura suficiente)');
+                } else {
+                    container.classList.add('force-two-columns');
+                    console.log('[Layout] Aplicando: 2 colunas (tela média, pouca altura)');
+                }
+            } else if (screenWidth >= 700) {
+                // Telas tablets: 2 colunas
+                container.classList.add('force-two-columns');
+                console.log('[Layout] Aplicando: 2 colunas (tablet)');
+            } else {
+                // Telas pequenas: 1 coluna
+                container.classList.add('force-one-column');
+                console.log('[Layout] Aplicando: 1 coluna (mobile)');
+            }
+
+            // Forçar 3 colunas em Full HD e superiores independente de outras regras
+            if (screenWidth >= 1920) {
+                container.classList.remove('force-two-columns', 'force-one-column');
+                container.classList.add('force-three-columns');
+                console.log('[Layout] FORÇANDO: 3 colunas (Full HD+)');
+            }
+        }
+
         // Event listeners
         document.addEventListener('DOMContentLoaded', function() {
+            // Aplicar layout inteligente imediatamente
+            adjustLayoutBasedOnScreenSize();
+
+            // Reaplicar quando a janela for redimensionada
+            let resizeTimeout;
+            window.addEventListener('resize', function() {
+                clearTimeout(resizeTimeout);
+                resizeTimeout = setTimeout(adjustLayoutBasedOnScreenSize, 150);
+            });
+
+            // Debug: mostrar info da tela no console e na página
+            console.log(`[Layout] Inicializado - Tela: ${window.innerWidth}x${window.innerHeight}`);
+            console.log(`[Layout] User Agent: ${navigator.userAgent}`);
+            console.log(`[Layout] Device Pixel Ratio: ${window.devicePixelRatio}`);
+
+            // Criar indicador visual de debug (removível)
+            const debugInfo = document.createElement('div');
+            debugInfo.id = 'layout-debug';
+            debugInfo.style.cssText = `
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                background: rgba(0,0,0,0.8);
+                color: white;
+                padding: 10px;
+                border-radius: 5px;
+                font-size: 12px;
+                z-index: 9999;
+                cursor: pointer;
+                font-family: monospace;
+            `;
+            debugInfo.innerHTML = `
+                📱 Tela: ${window.innerWidth}x${window.innerHeight}<br>
+                📊 Layout: Detectando...<br>
+                🖱️ Clique para remover
+            `;
+            debugInfo.onclick = () => debugInfo.remove();
+            document.body.appendChild(debugInfo);
+
+            // Atualizar debug info quando layout mudar
+            const originalAdjust = adjustLayoutBasedOnScreenSize;
+            adjustLayoutBasedOnScreenSize = function() {
+                originalAdjust();
+                const debugEl = document.getElementById('layout-debug');
+                if (debugEl) {
+                    const container = document.querySelector('.container.three-column-layout');
+                    let layoutType = 'Padrão';
+                    if (container?.classList.contains('force-three-columns')) layoutType = '3 Colunas';
+                    else if (container?.classList.contains('force-two-columns')) layoutType = '2 Colunas';
+                    else if (container?.classList.contains('force-one-column')) layoutType = '1 Coluna';
+
+                    debugEl.innerHTML = `
+                        📱 Tela: ${window.innerWidth}x${window.innerHeight}<br>
+                        📊 Layout: ${layoutType}<br>
+                        🖱️ Clique para remover
+                    `;
+                }
+            };
             // Fechar modal clicando no X
             const closeBtn = document.querySelector('.close');
             if (closeBtn) {
