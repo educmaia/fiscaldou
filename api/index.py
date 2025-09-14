@@ -1442,10 +1442,10 @@ HTML_TEMPLATE = '''
                 </form>
                 <div id="searchProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
 
-                <!-- Botão para buscar todos os termos cadastrados -->
+                <!-- Botão para buscar todas as sugestões -->
                 <form method="post" style="margin-top: 15px;">
-                    <button type="submit" name="action" value="search_all_terms" style="background: var(--success-color); width: 100%;">
-                        🔍 Buscar Todos os Termos Cadastrados
+                    <button type="submit" name="action" value="search_all_suggestions" style="background: var(--success-color); width: 100%;">
+                        🔍 Buscar Todas as Sugestões
                     </button>
                 </form>
 
@@ -1549,6 +1549,9 @@ HTML_TEMPLATE = '''
                     {% for result in results %}
                         <div class="result-item" onclick="openModal({{ loop.index }})">
                             <h4>{{ result.article.title or result.article.filename }} ({{ result.article.section }})</h4>
+                            {% if result.article.artCategory %}
+                            <p><strong>Órgão:</strong> {{ result.article.artCategory }}</p>
+                            {% endif %}
                             <p><strong style="color: var(--success-color);">🔍 Termos que geraram este resultado:</strong>
                                <span style="background: var(--success-color); color: white; padding: 2px 6px; border-radius: 12px; font-weight: bold;">{{ result.terms_matched|join('</span> <span style=\"background: var(--success-color); color: white; padding: 2px 6px; border-radius: 12px; font-weight: bold;\">') }}</span>
                             </p>
