@@ -593,42 +593,43 @@ HTML_TEMPLATE = '''
         }
 
         .container {
-            display: flex;
-            width: 100%;
+            display: flex !important;
+            flex-wrap: nowrap !important;
+            width: 100% !important;
             max-width: 1400px;
             margin: 0 auto;
             padding: 20px;
-            gap: 25px;
+            gap: 20px;
             align-items: flex-start;
         }
 
         .three-column-layout {
             display: flex !important;
+            flex-wrap: nowrap !important;
             width: 100% !important;
-            gap: 25px !important;
+            gap: 20px !important;
             align-items: flex-start !important;
         }
 
         .column {
-            flex: 1;
+            flex: 1 1 0 !important;
             display: flex;
             flex-direction: column;
-            gap: 25px;
+            gap: 20px;
+            min-width: 0 !important;
+            max-width: none !important;
         }
 
         .column-1 {
-            width: 33.33%;
-            min-width: 300px;
+            flex: 1 1 33.33% !important;
         }
 
         .column-2 {
-            width: 33.33%;
-            min-width: 300px;
+            flex: 1 1 33.33% !important;
         }
 
         .column-3 {
-            width: 33.33%;
-            min-width: 300px;
+            flex: 1 1 33.33% !important;
         }
 
         .card {
@@ -894,10 +895,10 @@ HTML_TEMPLATE = '''
             margin-top: 4px;
         }
 
-        /* Media queries simplificados */
+        /* Media queries para manter 3 colunas */
         @media (max-width: 1024px) {
             .container, .three-column-layout {
-                gap: 15px;
+                gap: 15px !important;
             }
 
             .card {
@@ -906,13 +907,15 @@ HTML_TEMPLATE = '''
             }
         }
 
-        /* Responsivo simples - apenas para telas muito pequenas */
-        @media (max-width: 600px) {
+        /* Apenas para smartphones muito pequenos */
+        @media (max-width: 500px) {
             .container, .three-column-layout {
                 flex-direction: column !important;
+                flex-wrap: wrap !important;
             }
 
             .column-1, .column-2, .column-3 {
+                flex: 1 1 100% !important;
                 width: 100% !important;
                 min-width: auto !important;
             }
