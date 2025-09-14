@@ -1709,11 +1709,22 @@ HTML_TEMPLATE = '''
                                         <p style="font-size: 0.8rem; color: var(--text-secondary); font-style: italic; margin: 5px 0;">Nenhum termo cadastrado.</p>
                                     {% endif %}
 
-                                    <!-- Formulário para adicionar novo termo -->
+                                    <!-- Formulário rápido: adicionar um termo -->
                                     <form method="post" style="display: flex; gap: 6px; margin-top: 10px; align-items: stretch;">
                                         <input type="hidden" name="email" value="{{ email }}">
                                         <input type="text" name="term" placeholder="Novo termo de busca" style="flex: 1; padding: 6px 10px; font-size: 0.8rem; border: 1px solid var(--border); border-radius: var(--radius-sm); min-width: 0;" required>
                                         <button type="submit" name="action" value="add_term" style="background: var(--success-color); color: white; border: none; padding: 6px 10px; border-radius: var(--radius-sm); font-size: 0.8rem; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">+</button>
+                                    </form>
+
+                                    <!-- Edição em lote: vários termos e Salvar -->
+                                    <form method="post" style="margin-top: 10px; display: grid; gap: 8px;">
+                                        <input type="hidden" name="email" value="{{ email }}">
+                                        <label style="font-size: 0.8rem; color: var(--text-secondary);">Cadastrar vários termos (um por linha ou separados por vírgula/;):</label>
+                                        <textarea name="terms_bulk" rows="3" placeholder="Ex:\ntermo A\ntermo B\ntermo C" style="width: 100%; padding: 8px 10px; font-size: 0.85rem; border: 1px solid var(--border); border-radius: var(--radius-sm); resize: vertical;">{{ ("\n".join(email_terms[email])) if email_terms[email] else "" }}</textarea>
+                                        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                                            <button type="submit" name="action" value="save_terms" class="btn-primary" style="background: var(--primary-color); color: white; border: none; padding: 8px 12px; border-radius: var(--radius-sm); font-size: 0.85rem;">Salvar termos</button>
+                                            <button type="button" onclick="this.closest('form').querySelector('textarea[name=terms_bulk]').value='';" class="btn-secondary" style="background: var(--background); color: var(--text-primary); border: 1px solid var(--border); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 0.85rem;">Limpar</button>
+                                        </div>
                                     </form>
                                 </div>
                             </div>
@@ -1990,6 +2001,37 @@ def home():
                                 message = f'Termo "{term}" não encontrado para {email}.'
                     else:
                         message = "Por favor, forneça um email e termo válidos."
+
+                elif action == 'save_terms':
+                    # Salvar múltiplos termos para o email
+                    bulk = request.form.get('terms_bulk', '') or ''
+                    if email is None or not email:
+                        message = "Por favor, forneça um email válido."
+                    else:
+                        # Quebrar por linhas, vírgulas ou ponto e vírgula
+                        raw_parts = []
+                        for line in bulk.splitlines():
+                            raw_parts.extend(re.split(r'[;,]', line))
+                        # Normalizar: trim, remover vazios e duplicados preservando ordem
+                        seen = set()
+                        new_terms = []
+                        for part in raw_parts:
+                            term_clean = part.strip()
+                            if term_clean and term_clean.lower() not in seen:
+                                seen.add(term_clean.lower())
+                                new_terms.append(term_clean)
+
+                        if edge_config_available:
+                            ok = save_search_terms_to_edge_config(email, new_terms)
+                            if ok:
+                                message = f"{len(new_terms)} termo(s) salvo(s) para {email}."
+                            else:
+                                # Fallback em memória
+                                search_terms_storage[email] = new_terms
+                                message = f"{len(new_terms)} termo(s) salvo(s) para {email}. (Fallback)"
+                        else:
+                            search_terms_storage[email] = new_terms
+                            message = f"{len(new_terms)} termo(s) salvo(s) para {email}. (Memória)"
 
                 elif action == 'send_now_all':
                     # Send test email now for all registered emails
