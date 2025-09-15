@@ -1616,6 +1616,19 @@ HTML_TEMPLATE = '''
                         searchMsg.style.display = 'block';
                     });
                 }
+
+                // Mostrar mensagem de processamento para busca Mestrando Exterior
+                const mestrandoForm = document.getElementById('searchMestrandoForm');
+                const mestrandoBtn = document.getElementById('searchMestrandoBtn');
+                const mestrandoMsg = document.getElementById('mestrandoProcessing');
+                if (mestrandoForm && mestrandoBtn && mestrandoMsg) {
+                    mestrandoForm.addEventListener('submit', function() {
+                        mestrandoBtn.disabled = true;
+                        mestrandoBtn.textContent = '🔍 Buscando Mestrando...';
+                        mestrandoMsg.innerHTML = '<span class="spinner"></span>Busca sequencial em andamento. A busca completa pode demorar até 1 minuto.';
+                        mestrandoMsg.style.display = 'block';
+                    });
+                }
             } catch (err) {
                 // Silenciar erros não críticos
             }
@@ -1755,6 +1768,9 @@ HTML_TEMPLATE = '''
                     </button>
                 </form>
                 <div id="mestrandoProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
+                <div class="info-message" style="font-size: 0.9em; color: #666; margin-top: 5px; padding: 8px; background: #f9f9f9; border-radius: 4px;">
+                    ℹ️ Esta busca percorre 7 termos sequencialmente e pode demorar até 1 minuto.
+                </div>
 
                 <div style="margin-top: 20px;">
                     <div class="suggestions-panel">
@@ -1801,7 +1817,7 @@ HTML_TEMPLATE = '''
                 </form>
 
                 <div class="email-list">
-                    <h3>Emails e Termos de Busca</h3>
+                    <h3>Lista de Emails para Envio</h3>
                     {% if emails %}
                         {% for email in emails %}
                             <div class="email-card" style="margin-bottom: 20px; padding: 15px; background: var(--background); border-radius: var(--radius); border: 1px solid var(--border);">
@@ -1818,43 +1834,21 @@ HTML_TEMPLATE = '''
                                     <button type="submit" name="action" value="send_now" style="background: var(--primary-color); color: white; border: none; padding: 8px 12px; border-radius: var(--radius-sm); font-size: 0.85rem;">▶️ Enviar teste agora</button>
                                 </form>
 
-                                <!-- Termos de busca para este email -->
-                                <div class="email-terms">
-                                    <h4 style="margin: 10px 0 5px 0; font-size: 0.9rem; color: var(--text-secondary);">Termos de Busca:</h4>
-                                    {% if email_terms[email] %}
-                                        <div class="terms-list" style="margin-bottom: 10px;">
-                                            {% for term in email_terms[email] %}
-                                                <span style="display: inline-block; background: var(--primary-color); color: white; padding: 4px 8px; border-radius: var(--radius-sm); font-size: 0.8rem; margin: 2px 4px 2px 0;">
-                                                    {{ term }}
-                                                    <form method="post" style="display: inline; margin: 0;">
-                                                        <input type="hidden" name="email" value="{{ email }}">
-                                                        <input type="hidden" name="term" value="{{ term }}">
-                                                        <button type="submit" name="action" value="remove_term" style="background: none; border: none; color: white; margin-left: 5px; font-size: 0.8rem; cursor: pointer;">×</button>
-                                                    </form>
-                                                </span>
-                                            {% endfor %}
-                                        </div>
-                                    {% else %}
-                                        <p style="font-size: 0.8rem; color: var(--text-secondary); font-style: italic; margin: 5px 0;">Nenhum termo cadastrado.</p>
-                                    {% endif %}
-
-                                    <!-- Formulário rápido: adicionar um termo -->
-                                    <form method="post" style="display: flex; gap: 6px; margin-top: 10px; align-items: stretch;">
-                                        <input type="hidden" name="email" value="{{ email }}">
-                                        <input type="text" name="term" placeholder="Novo termo de busca" style="flex: 1; padding: 6px 10px; font-size: 0.8rem; border: 1px solid var(--border); border-radius: var(--radius-sm); min-width: 0;" required>
-                                        <button type="submit" name="action" value="add_term" style="background: var(--success-color); color: white; border: none; padding: 6px 10px; border-radius: var(--radius-sm); font-size: 0.8rem; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">+</button>
-                                    </form>
-
-                                    <!-- Edição em lote: vários termos e Salvar -->
-                                    <form method="post" style="margin-top: 10px; display: grid; gap: 8px;">
-                                        <input type="hidden" name="email" value="{{ email }}">
-                                        <label style="font-size: 0.8rem; color: var(--text-secondary);">Cadastrar vários termos (um por linha ou separados por vírgula/;):</label>
-                                        <textarea name="terms_bulk" rows="3" placeholder="Ex:\ntermo A\ntermo B\ntermo C" style="width: 100%; padding: 8px 10px; font-size: 0.85rem; border: 1px solid var(--border); border-radius: var(--radius-sm); resize: vertical;">{{ ("\n".join(email_terms[email])) if email_terms[email] else "" }}</textarea>
-                                        <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                                            <button type="submit" name="action" value="save_terms" class="btn-primary" style="background: var(--primary-color); color: white; border: none; padding: 8px 12px; border-radius: var(--radius-sm); font-size: 0.85rem;">Salvar termos</button>
-                                            <button type="button" onclick="this.closest('form').querySelector('textarea[name=terms_bulk]').value='';" class="btn-secondary" style="background: var(--background); color: var(--text-primary); border: 1px solid var(--border); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 0.85rem;">Limpar</button>
-                                        </div>
-                                    </form>
+                                <!-- Informação sobre termos fixos -->
+                                <div class="email-info">
+                                    <h4 style="margin: 10px 0 5px 0; font-size: 0.9rem; color: var(--text-secondary);">Termos de Busca Fixos:</h4>
+                                    <div style="font-size: 0.8rem; color: var(--text-secondary); padding: 8px; background: #f0f0f0; border-radius: 4px; margin: 5px 0;">
+                                        🎓 Este email receberá resultados da busca "Mestrando Exterior" com os seguintes termos:
+                                        <br><br>
+                                        <strong>Termos fixos:</strong><br>
+                                        • 23001.000069/2025-95<br>
+                                        • Associação Brasileira das Faculdades (Abrafi)<br>
+                                        • Resolução CNE/CES<br>
+                                        • Resolução CNE/CES nº 2/2024<br>
+                                        • reconhecimento de diplomas<br>
+                                        • 589/2025<br>
+                                        • relatado em 4 de setembro de 2025
+                                    </div>
                                 </div>
                             </div>
                         {% endfor %}
@@ -2176,137 +2170,87 @@ def home():
                 # Ações que NÃO precisam de email devem estar nos elif acima
                 # Se chegou aqui, são ações relacionadas a email
 
-                if action == 'add_term':
-                    # Add search term to email
-                    term = request.form.get('term', '').strip()
-                    if email and term:
-                        redis_available = get_redis_client() is not None
+                # Ações de gerenciamento de termos removidas - agora utiliza apenas termos fixos do Mestrando Exterior
 
-                        # Prioridade: Redis > Edge Config > Memória
-                        if redis_available:
-                            if add_search_term_to_redis(email, term):
-                                message = f'Termo "{term}" adicionado para {email}! (Redis) 🚀'
-                            else:
-                                message = f'Erro ao adicionar termo no Redis.'
-                        elif edge_config_available:
-                            if add_search_term_to_edge_config(email, term):
-                                message = f'Termo "{term}" adicionado para {email}! (Edge Config)'
-                            else:
-                                message = f'Termo "{term}" já existe para {email}.'
-                        else:
-                            # Fallback para memória
-                            if email not in search_terms_storage:
-                                search_terms_storage[email] = []
-                            if term not in search_terms_storage[email]:
-                                search_terms_storage[email].append(term)
-                                message = f'Termo "{term}" adicionado para {email}! (Memória)'
-                            else:
-                                message = f'Termo "{term}" já existe para {email}.'
-                    else:
-                        message = "Por favor, forneça um email e termo válidos."
-
-                elif action == 'remove_term':
-                    # Remove search term from email
-                    term = request.form.get('term', '').strip()
-                    if email and term:
-                        redis_available = get_redis_client() is not None
-
-                        # Prioridade: Redis > Edge Config > Memória
-                        if redis_available:
-                            if remove_search_term_from_redis(email, term):
-                                message = f'Termo "{term}" removido de {email}! (Redis) 🚀'
-                            else:
-                                message = f'Erro ao remover termo do Redis.'
-                        elif edge_config_available:
-                            if remove_search_term_from_edge_config(email, term):
-                                message = f'Termo "{term}" removido de {email}! (Edge Config)'
-                            else:
-                                message = f'Termo "{term}" não encontrado para {email}.'
-                        else:
-                            # Fallback para memória
-                            if email in search_terms_storage and term in search_terms_storage[email]:
-                                search_terms_storage[email].remove(term)
-                                message = f'Termo "{term}" removido de {email}! (Memória)'
-                            else:
-                                message = f'Termo "{term}" não encontrado para {email}.'
-                    else:
-                        message = "Por favor, forneça um email e termo válidos."
-
-                elif action == 'save_terms':
-                    # Salvar múltiplos termos para o email
-                    bulk = request.form.get('terms_bulk', '') or ''
-                    if email is None or not email:
-                        message = "Por favor, forneça um email válido."
-                    else:
-                        # Quebrar por linhas, vírgulas ou ponto e vírgula
-                        raw_parts = []
-                        for line in bulk.splitlines():
-                            raw_parts.extend(re.split(r'[;,]', line))
-                        # Normalizar: trim, remover vazios e duplicados preservando ordem
-                        seen = set()
-                        new_terms = []
-                        for part in raw_parts:
-                            term_clean = part.strip()
-                            if term_clean and term_clean.lower() not in seen:
-                                seen.add(term_clean.lower())
-                                new_terms.append(term_clean)
-
-                        if edge_config_available:
-                            ok = save_search_terms_to_edge_config(email, new_terms)
-                            if ok:
-                                message = f"{len(new_terms)} termo(s) salvo(s) para {email}."
-                            else:
-                                # Fallback em memória
-                                search_terms_storage[email] = new_terms
-                                message = f"{len(new_terms)} termo(s) salvo(s) para {email}. (Fallback)"
-                        else:
-                            search_terms_storage[email] = new_terms
-                            message = f"{len(new_terms)} termo(s) salvo(s) para {email}. (Memória)"
-
-                elif action == 'send_now_all':
-                    # Send test email now for all registered emails
+                if action == 'send_now_all':
+                    # Send test email now for all registered emails using fixed Mestrando Exterior terms
                     try:
                         processed = 0
                         sent = 0
-                        skipped = 0
+
+                        # Usar termos fixos do Mestrando Exterior
+                        mestrando_terms = [
+                            '23001.000069/2025-95',
+                            'Associação Brasileira das Faculdades (Abrafi)',
+                            'Resolução CNE/CES',
+                            'Resolução CNE/CES nº 2/2024',
+                            'reconhecimento de diplomas',
+                            '589/2025',
+                            'relatado em 4 de setembro de 2025'
+                        ]
+
+                        # Buscar documentos com os termos fixos
+                        print(f"[DEBUG] Searching for Mestrando Exterior terms for email sending: {mestrando_terms}")
+                        matches, _stats = find_matches_vercel(mestrando_terms)
+
+                        # Clean HTML from results
+                        if matches:
+                            for result in matches:
+                                if 'snippets' in result and result['snippets']:
+                                    result['snippets'] = [clean_html(snippet) for snippet in result['snippets']]
+
+                        try:
+                            from summarize import summarize_matches
+                            summarized = summarize_matches(matches)
+                        except Exception:
+                            summarized = matches
+
+                        # Enviar para todos os emails cadastrados
                         for em in current_emails:
-                            terms = get_search_terms_from_edge_config(em) if edge_config_available else search_terms_storage.get(em, [])
-                            if not terms:
-                                skipped += 1
-                                continue
-                            matches, _stats = find_matches_vercel(terms)
-                            try:
-                                from summarize import summarize_matches
-                                summarized = summarize_matches(matches)
-                            except Exception:
-                                summarized = matches
                             html = format_email_body_html(em, date.today().strftime('%d/%m/%Y'), summarized)
-                            ok = send_email_html(em, f"DOU Notificações - {date.today().strftime('%d/%m/%Y')}", html)
+                            ok = send_email_html(em, f"DOU Mestrando Exterior - {date.today().strftime('%d/%m/%Y')}", html)
                             sent += 1 if ok else 0
                             processed += 1
-                        message = f"Envio concluído: {sent}/{processed} emails enviados. {skipped} sem termos."
+
+                        message = f"Envio concluído: {sent}/{processed} emails enviados com resultados da busca Mestrando Exterior."
                     except Exception as e:
                         message = f"Erro ao enviar para todos: {str(e)}"
 
                 elif action == 'send_now' and email:
-                    # Send test email now for a specific email
+                    # Send test email now for a specific email using fixed Mestrando Exterior terms
                     try:
-                        terms = get_search_terms_from_edge_config(email) if edge_config_available else search_terms_storage.get(email, [])
-                        if not terms:
-                            message = f"{email} não possui termos cadastrados."
+                        # Usar termos fixos do Mestrando Exterior
+                        mestrando_terms = [
+                            '23001.000069/2025-95',
+                            'Associação Brasileira das Faculdades (Abrafi)',
+                            'Resolução CNE/CES',
+                            'Resolução CNE/CES nº 2/2024',
+                            'reconhecimento de diplomas',
+                            '589/2025',
+                            'relatado em 4 de setembro de 2025'
+                        ]
+
+                        print(f"[DEBUG] Sending individual email to {email} with Mestrando Exterior terms: {mestrando_terms}")
+                        matches, _stats = find_matches_vercel(mestrando_terms)
+
+                        # Clean HTML from results
+                        if matches:
+                            for result in matches:
+                                if 'snippets' in result and result['snippets']:
+                                    result['snippets'] = [clean_html(snippet) for snippet in result['snippets']]
+
+                        try:
+                            from summarize import summarize_matches
+                            summarized = summarize_matches(matches)
+                        except Exception:
+                            summarized = matches
+
+                        html = format_email_body_html(email, date.today().strftime('%d/%m/%Y'), summarized)
+                        ok = send_email_html(email, f"DOU Mestrando Exterior - {date.today().strftime('%d/%m/%Y')}", html)
+                        if ok:
+                            message = f"Email de teste enviado para {email} com {len(summarized)} ocorrência(s) da busca Mestrando Exterior."
                         else:
-                            matches, _stats = find_matches_vercel(terms)
-                            try:
-                                from summarize import summarize_matches
-                                summarized = summarize_matches(matches)
-                            except Exception:
-                                summarized = matches
-                            html = format_email_body_html(email, date.today().strftime('%d/%m/%Y'), summarized)
-                            ok = send_email_html(email, f"DOU Notificações - {date.today().strftime('%d/%m/%Y')}", html)
-                            if ok:
-                                message = f"Email de teste enviado para {email} com {len(summarized)} ocorrência(s)."
-                            else:
-                                message = f"Falha no envio para {email}. Verifique as credenciais SMTP."
+                            message = f"Falha no envio para {email}. Verifique as credenciais SMTP."
                     except Exception as e:
                         message = f"Erro ao enviar para {email}: {str(e)}"
 
