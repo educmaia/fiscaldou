@@ -642,32 +642,194 @@ def send_email_html(recipient, subject, html_body):
 def format_email_body_html(email, date_str, matches):
     if not matches:
         return f"""
-        <html><body>
-        <h2>DOU Notificações - {date_str}</h2>
-        <p>Olá {email},</p>
-        <p>Nenhuma ocorrência encontrada hoje no DOU para os seus termos.</p>
-        <p>Até breve,</p>
-        </body></html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>DOU Notificações - {date_str}</title>
+            <style>
+                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; background-color: #f5f5f5; }}
+                .container {{ max-width: 800px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }}
+                .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; }}
+                .content {{ padding: 30px; }}
+                .footer {{ background: #f8f9fa; padding: 20px; text-align: center; color: #666; border-top: 1px solid #eee; }}
+                .no-results {{ text-align: center; padding: 40px; color: #666; }}
+                .icon {{ font-size: 48px; margin-bottom: 20px; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1 style="margin: 0; font-size: 28px;">📋 DOU Notificações</h1>
+                    <p style="margin: 10px 0 0 0; opacity: 0.9; font-size: 16px;">{date_str}</p>
+                </div>
+                <div class="content">
+                    <p style="font-size: 18px; margin-bottom: 20px;">Olá <strong>{email}</strong>,</p>
+                    <div class="no-results">
+                        <div class="icon">🔍</div>
+                        <p style="font-size: 16px; margin: 0;">Nenhuma ocorrência encontrada hoje no DOU para os seus termos de monitoramento.</p>
+                        <p style="font-size: 14px; color: #888; margin-top: 10px;">Continue monitorando - notificaremos você assim que houver novidades!</p>
+                    </div>
+                </div>
+                <div class="footer">
+                    <p style="margin: 0;">🤖 Sistema Automático de Monitoramento DOU</p>
+                </div>
+            </div>
+        </body>
+        </html>
         """
 
-    parts = [
-        f"<h2>DOU Notificações - {date_str}</h2>",
-        f"<p>Olá {email},</p>",
-        f"<p>Foram encontradas {len(matches)} ocorrência(s) hoje:</p>"
-    ]
+    # Calcular estatísticas
+    total_terms_found = sum(len(m.get('terms_matched', [])) for m in matches)
+    sections = set(m.get('article', {}).get('section', 'N/A') for m in matches)
+    sections_list = ', '.join(sorted(sections))
+
+    # Cabeçalho com estilo completo
+    html_parts = [f"""
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>DOU Notificações - {date_str}</title>
+            <style>
+                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 20px; background-color: #f5f5f5; }}
+                .container {{ max-width: 900px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }}
+                .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; }}
+                .content {{ padding: 30px; }}
+                .stats {{ background: #f8f9fa; border-radius: 8px; padding: 20px; margin: 20px 0; display: flex; justify-content: space-around; text-align: center; }}
+                .stat-item {{ flex: 1; }}
+                .stat-number {{ font-size: 24px; font-weight: bold; color: #667eea; display: block; }}
+                .stat-label {{ font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 1px; }}
+                .match-item {{ border: 1px solid #e1e8ed; border-radius: 8px; padding: 20px; margin: 20px 0; background: #fafbfc; }}
+                .match-header {{ background: #667eea; color: white; padding: 15px; margin: -20px -20px 15px -20px; border-radius: 8px 8px 0 0; }}
+                .match-title {{ font-size: 18px; font-weight: bold; margin: 0; }}
+                .match-subtitle {{ font-size: 14px; opacity: 0.9; margin: 5px 0 0 0; }}
+                .terms-badge {{ display: inline-block; background: #28a745; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; margin: 2px; }}
+                .snippet {{ background: #fff; border-left: 4px solid #667eea; padding: 15px; margin: 10px 0; border-radius: 0 4px 4px 0; font-style: italic; color: #555; }}
+                .metadata {{ display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 15px 0; }}
+                .metadata-item {{ background: white; padding: 10px; border-radius: 4px; border: 1px solid #eee; }}
+                .metadata-label {{ font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }}
+                .metadata-value {{ font-weight: 600; color: #333; }}
+                .summary-section {{ background: white; border-radius: 6px; padding: 15px; margin: 15px 0; border: 1px solid #e1e8ed; }}
+                .footer {{ background: #f8f9fa; padding: 20px; text-align: center; color: #666; border-top: 1px solid #eee; }}
+                .highlight {{ background-color: #fff3cd; padding: 2px 4px; border-radius: 2px; }}
+                @media (max-width: 600px) {{
+                    .stats {{ flex-direction: column; }}
+                    .metadata {{ grid-template-columns: 1fr; }}
+                    .container {{ margin: 10px; }}
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1 style="margin: 0; font-size: 28px;">📋 DOU Notificações</h1>
+                    <p style="margin: 10px 0 0 0; opacity: 0.9; font-size: 16px;">{date_str}</p>
+                </div>
+                <div class="content">
+                    <p style="font-size: 18px; margin-bottom: 20px;">Olá <strong>{email}</strong>,</p>
+
+                    <div class="stats">
+                        <div class="stat-item">
+                            <span class="stat-number">{len(matches)}</span>
+                            <span class="stat-label">Ocorrências</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-number">{total_terms_found}</span>
+                            <span class="stat-label">Termos Encontrados</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-number">{len(sections)}</span>
+                            <span class="stat-label">Seções DOU</span>
+                        </div>
+                    </div>
+
+                    <p style="color: #28a745; font-weight: 600; text-align: center; margin: 20px 0;">
+                        ✅ Foram encontradas <strong>{len(matches)} ocorrência(s)</strong> hoje nas seções: <em>{sections_list}</em>
+                    </p>
+    """]
+
+    # Iterar através das ocorrências
     for i, m in enumerate(matches, 1):
         art = m.get('article', {})
-        terms = ', '.join(m.get('terms_matched', []))
-        summary = m.get('summary') or ''
-        parts.append(
-            f"<div style='border:1px solid #ddd;border-radius:6px;padding:12px;margin:10px 0;'>"
-            f"<h3>{i}. {art.get('filename','(sem nome)')} - {art.get('section','')}</h3>"
-            f"<p><strong>Termos:</strong> {terms}</p>"
-            f"<p><strong>Resumo:</strong><br>{summary}</p>"
-            f"</div>"
-        )
-    parts.append("<p>Até breve,</p>")
-    return f"<html><body>{''.join(parts)}</body></html>"
+        terms = m.get('terms_matched', [])
+        summary = m.get('summary', 'Resumo não disponível')
+        snippets = m.get('snippets', [])
+
+        # Informações do artigo
+        filename = art.get('filename', 'Arquivo não identificado')
+        section = art.get('section', 'Seção não especificada')
+        xml_path = art.get('xml_path', '')
+
+        # Badges dos termos
+        terms_badges = ''.join([f'<span class="terms-badge">{term}</span>' for term in terms])
+
+        # Metadados estruturados
+        metadata_html = f"""
+        <div class="metadata">
+            <div class="metadata-item">
+                <div class="metadata-label">Arquivo XML</div>
+                <div class="metadata-value">{filename}</div>
+            </div>
+            <div class="metadata-item">
+                <div class="metadata-label">Seção DOU</div>
+                <div class="metadata-value">{section}</div>
+            </div>
+        </div>
+        """
+
+        # Snippets destacados
+        snippets_html = ""
+        if snippets:
+            snippets_html = "<div style='margin: 15px 0;'><strong>📄 Trechos relevantes:</strong></div>"
+            for idx, snippet in enumerate(snippets[:3], 1):  # Máximo 3 snippets
+                # Destacar termos encontrados no snippet
+                highlighted_snippet = snippet
+                for term in terms:
+                    highlighted_snippet = highlighted_snippet.replace(
+                        term, f'<span class="highlight"><strong>{term}</strong></span>'
+                    )
+                snippets_html += f'<div class="snippet"><strong>Trecho {idx}:</strong> {highlighted_snippet}</div>'
+
+        # Seção da ocorrência
+        html_parts.append(f"""
+        <div class="match-item">
+            <div class="match-header">
+                <div class="match-title">📄 {i}. {filename}</div>
+                <div class="match-subtitle">{section}</div>
+            </div>
+
+            <div style="margin: 15px 0;">
+                <strong>🔍 Termos encontrados:</strong><br>
+                {terms_badges}
+            </div>
+
+            {metadata_html}
+
+            <div class="summary-section">
+                <strong>📝 Resumo:</strong><br>
+                <div style="margin-top: 10px; color: #555;">{summary}</div>
+            </div>
+
+            {snippets_html}
+
+            {f'<div style="margin-top: 15px; font-size: 12px; color: #666;"><strong>🔗 Arquivo:</strong> {xml_path}</div>' if xml_path else ''}
+        </div>
+        """)
+
+    # Rodapé
+    html_parts.extend([
+        """
+                </div>
+                <div class="footer">
+                    <p style="margin: 0; font-size: 14px;">🤖 <strong>Sistema Automático de Monitoramento DOU</strong></p>
+                    <p style="margin: 5px 0 0 0; font-size: 12px;">Monitoramento ativo • Notificações em tempo real • Powered by FiscalDOU</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+    ])
+
+    return ''.join(html_parts)
 
 # ----------------------
 # Cron route
@@ -1817,41 +1979,30 @@ HTML_TEMPLATE = '''
                 </form>
 
                 <div class="email-list">
-                    <h3>Lista de Emails para Envio</h3>
+                    <h3>Status dos Emails Cadastrados</h3>
                     {% if emails %}
-                        {% for email in emails %}
-                            <div class="email-card" style="margin-bottom: 20px; padding: 15px; background: var(--background); border-radius: var(--radius); border: 1px solid var(--border);">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                                    <span class="email" style="font-weight: 600;">{{ email }}</span>
-                                    <form method="post" style="display: inline; margin: 0;">
-                                        <input type="hidden" name="email" value="{{ email }}">
-                                        <button type="submit" name="action" value="unregister" class="remove-btn" style="background: var(--error-color); color: white; border: none; padding: 5px 10px; border-radius: var(--radius-sm); font-size: 0.8rem;">Remover Email</button>
-                                    </form>
-                                </div>
-                                <!-- Botão enviar agora para este email -->
-                                <form method="post" style="margin: 8px 0;">
-                                    <input type="hidden" name="email" value="{{ email }}">
-                                    <button type="submit" name="action" value="send_now" style="background: var(--primary-color); color: white; border: none; padding: 8px 12px; border-radius: var(--radius-sm); font-size: 0.85rem;">▶️ Enviar teste agora</button>
-                                </form>
+                        <div style="padding: 15px; background: var(--background); border-radius: var(--radius); border: 1px solid var(--border); text-align: center;">
+                            <p style="font-size: 1.2rem; font-weight: 600; color: var(--success-color); margin: 10px 0;">
+                                📧 {{ emails|length }} email(s) cadastrado(s)
+                            </p>
+                            <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 10px 0;">
+                                Por motivos de conformidade com a LGPD, os emails cadastrados não são exibidos.
+                            </p>
 
-                                <!-- Informação sobre termos fixos -->
-                                <div class="email-info">
-                                    <h4 style="margin: 10px 0 5px 0; font-size: 0.9rem; color: var(--text-secondary);">Termos de Busca Fixos:</h4>
-                                    <div style="font-size: 0.8rem; color: var(--text-secondary); padding: 8px; background: #f0f0f0; border-radius: 4px; margin: 5px 0;">
-                                        🎓 Este email receberá resultados da busca "Mestrando Exterior" com os seguintes termos:
-                                        <br><br>
-                                        <strong>Termos fixos:</strong><br>
-                                        • 23001.000069/2025-95<br>
-                                        • Associação Brasileira das Faculdades (Abrafi)<br>
-                                        • Resolução CNE/CES<br>
-                                        • Resolução CNE/CES nº 2/2024<br>
-                                        • reconhecimento de diplomas<br>
-                                        • 589/2025<br>
-                                        • relatado em 4 de setembro de 2025
-                                    </div>
-                                </div>
+                            <!-- Informação sobre termos fixos -->
+                            <div style="margin-top: 15px; font-size: 0.8rem; color: var(--text-secondary); padding: 8px; background: #f0f0f0; border-radius: 4px;">
+                                🎓 Todos os emails cadastrados recebem resultados da busca "Mestrando Exterior" com os seguintes termos:
+                                <br><br>
+                                <strong>Termos fixos:</strong><br>
+                                • 23001.000069/2025-95<br>
+                                • Associação Brasileira das Faculdades (Abrafi)<br>
+                                • Resolução CNE/CES<br>
+                                • Resolução CNE/CES nº 2/2024<br>
+                                • reconhecimento de diplomas<br>
+                                • 589/2025<br>
+                                • relatado em 4 de setembro de 2025
                             </div>
-                        {% endfor %}
+                        </div>
                     {% else %}
                         <p style="color: var(--text-secondary); font-style: italic;">Nenhum email cadastrado.</p>
                     {% endif %}
@@ -2023,6 +2174,30 @@ def home():
                     message = f"Erro na busca Mestrando Exterior: {str(e)}"
                     search_stats = {'error': str(e)}
 
+                # Retornar imediatamente após processar a busca Mestrando Exterior
+                # para evitar cair no else que valida email
+                email_terms = {}
+                for email in current_emails:
+                    if redis_available:
+                        email_terms[email] = get_search_terms_from_redis(email)
+                        if not email_terms[email] and edge_config_available:
+                            email_terms[email] = get_search_terms_from_edge_config(email)
+                        if not email_terms[email]:
+                            email_terms[email] = search_terms_storage.get(email, [])
+                    elif edge_config_available:
+                        email_terms[email] = get_search_terms_from_edge_config(email)
+                    else:
+                        email_terms[email] = search_terms_storage.get(email, [])
+
+                return render_template_string(HTML_TEMPLATE,
+                                            message=message,
+                                            results=search_results,
+                                            search_term=search_term,
+                                            use_ai=use_ai,
+                                            emails=list(current_emails),
+                                            email_terms=email_terms,
+                                            search_stats=search_stats if 'search_stats' in locals() else {})
+
             elif action == 'search_all_terms':
                 # Search for all terms from all registered emails
                 try:
@@ -2068,6 +2243,29 @@ def home():
                     message = f"Erro na busca por todos os termos: {str(e)}"
                     search_stats = {'error': str(e)}
 
+                # Retornar imediatamente após processar search_all_terms
+                email_terms = {}
+                for email in current_emails:
+                    if redis_available:
+                        email_terms[email] = get_search_terms_from_redis(email)
+                        if not email_terms[email] and edge_config_available:
+                            email_terms[email] = get_search_terms_from_edge_config(email)
+                        if not email_terms[email]:
+                            email_terms[email] = search_terms_storage.get(email, [])
+                    elif edge_config_available:
+                        email_terms[email] = get_search_terms_from_edge_config(email)
+                    else:
+                        email_terms[email] = search_terms_storage.get(email, [])
+
+                return render_template_string(HTML_TEMPLATE,
+                                            message=message,
+                                            results=search_results,
+                                            search_term=search_term,
+                                            use_ai=use_ai,
+                                            emails=list(current_emails),
+                                            email_terms=email_terms,
+                                            search_stats=search_stats if 'search_stats' in locals() else {})
+
             elif action == 'refresh_cache':
                 # Handle cache refresh
                 try:
@@ -2078,6 +2276,29 @@ def home():
                     print(f"[ERROR] Cache refresh failed: {e}")
                     message = f"Erro ao atualizar cache: {str(e)}"
                     search_stats = {'error': str(e)}
+
+                # Retornar imediatamente após processar refresh_cache
+                email_terms = {}
+                for email in current_emails:
+                    if redis_available:
+                        email_terms[email] = get_search_terms_from_redis(email)
+                        if not email_terms[email] and edge_config_available:
+                            email_terms[email] = get_search_terms_from_edge_config(email)
+                        if not email_terms[email]:
+                            email_terms[email] = search_terms_storage.get(email, [])
+                    elif edge_config_available:
+                        email_terms[email] = get_search_terms_from_edge_config(email)
+                    else:
+                        email_terms[email] = search_terms_storage.get(email, [])
+
+                return render_template_string(HTML_TEMPLATE,
+                                            message=message,
+                                            results=search_results,
+                                            search_term=search_term,
+                                            use_ai=use_ai,
+                                            emails=list(current_emails),
+                                            email_terms=email_terms,
+                                            search_stats=search_stats if 'search_stats' in locals() else {})
 
             elif action == 'send_now_all':
                 # Send emails to all registered users
@@ -2116,6 +2337,29 @@ def home():
                     message = f"Envio concluído: {sent}/{processed} emails enviados. {skipped} sem termos."
                 except Exception as e:
                     message = f"Erro ao enviar para todos: {str(e)}"
+
+                # Retornar imediatamente após processar send_now_all
+                email_terms = {}
+                for email in current_emails:
+                    if redis_available:
+                        email_terms[email] = get_search_terms_from_redis(email)
+                        if not email_terms[email] and edge_config_available:
+                            email_terms[email] = get_search_terms_from_edge_config(email)
+                        if not email_terms[email]:
+                            email_terms[email] = search_terms_storage.get(email, [])
+                    elif edge_config_available:
+                        email_terms[email] = get_search_terms_from_edge_config(email)
+                    else:
+                        email_terms[email] = search_terms_storage.get(email, [])
+
+                return render_template_string(HTML_TEMPLATE,
+                                            message=message,
+                                            results=search_results,
+                                            search_term=search_term,
+                                            use_ai=use_ai,
+                                            emails=list(current_emails),
+                                            email_terms=email_terms,
+                                            search_stats=search_stats if 'search_stats' in locals() else {})
 
             elif 'search_term' in request.form:
                 # Handle search
