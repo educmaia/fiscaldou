@@ -14,6 +14,14 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import redis
 
+# Carregar variáveis de ambiente do .env
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # Se python-dotenv não estiver disponível, continua sem
+    pass
+
 app = Flask(__name__)
 
 # Edge Config configuration
