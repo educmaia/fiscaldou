@@ -1748,13 +1748,13 @@ HTML_TEMPLATE = '''
                 </form>
                 <div id="searchProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
 
-                <!-- Botão para buscar todas as sugestões -->
-                <form method="post" style="margin-top: 15px;" id="searchSuggestionsForm">
-                    <button type="submit" name="action" value="search_all_suggestions" style="background: var(--success-color); width: 100%;" id="searchSuggestionsBtn">
-                        🔍 Buscar Todas as Sugestões
+                <!-- Botão para busca Mestrando Exterior -->
+                <form method="post" style="margin-top: 15px;" id="searchMestrandoForm">
+                    <button type="submit" name="action" value="search_mestrando_exterior" style="background: var(--primary-color); width: 100%;" id="searchMestrandoBtn">
+                        🎓 Busca Mestrando Exterior
                     </button>
                 </form>
-                <div id="suggestionsProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
+                <div id="mestrandoProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
 
                 <div style="margin-top: 20px;">
                     <div class="suggestions-panel">
@@ -1972,31 +1972,61 @@ def home():
             # Prioritizar ações específicas antes de verificar search_term
             action = request.form.get('action')
 
-            if action == 'search_all_suggestions':
-                # Search for all predefined suggestions
+            if action == 'search_mestrando_exterior':
+                # Busca sequencial para termos relacionados a Mestrando Exterior
                 try:
-                    # Lista das sugestões predefinidas centralizada
-                    suggestion_terms = SUGGESTION_TERMS
+                    mestrando_terms = [
+                        '23001.000069/2025-95',
+                        'Associação Brasileira das Faculdades (Abrafi)',
+                        'Resolução CNE/CES',
+                        'Resolução CNE/CES nº 2/2024',
+                        'reconhecimento de diplomas',
+                        '589/2025',
+                        'relatado em 4 de setembro de 2025'
+                    ]
 
-                    print(f"[DEBUG] Searching for all suggestions: {suggestion_terms}")
-                    matches, search_stats = find_matches_vercel(suggestion_terms)
+                    print(f"[DEBUG] Searching for Mestrando Exterior terms: {mestrando_terms}")
+                    all_matches = []
+                    search_stats = {'total_files_processed': 0, 'total_matches': 0}
 
-                    if matches:
-                        # Clean HTML from summaries and snippets
-                        for result in matches:
-                            if 'snippets' in result and result['snippets']:
-                                result['snippets'] = [clean_html(snippet) for snippet in result['snippets']]
-                            # Add summary
-                            result['summary'] = f'Documento oficial relacionado aos termos: {", ".join(result["terms_matched"])}'
+                    # Busca sequencial por cada termo
+                    for term in mestrando_terms:
+                        print(f"[DEBUG] Searching for term: {term}")
+                        matches, term_stats = find_matches_vercel([term])
 
-                        search_results = matches
-                        search_term = ", ".join(suggestion_terms[:3]) + ("..." if len(suggestion_terms) > 3 else "")
-                        message = f"Busca por todas as sugestões: {len(matches)} artigos encontrados para {len(suggestion_terms)} termos sugeridos."
+                        if matches:
+                            # Clean HTML from summaries and snippets
+                            for result in matches:
+                                if 'snippets' in result and result['snippets']:
+                                    result['snippets'] = [clean_html(snippet) for snippet in result['snippets']]
+                                # Add summary with specific term
+                                result['summary'] = f'Documento sobre Mestrando Exterior - termo: {term}'
+                                result['search_term_used'] = term
+
+                            all_matches.extend(matches)
+                            search_stats['total_matches'] += len(matches)
+
+                        if term_stats:
+                            search_stats['total_files_processed'] += term_stats.get('xml_files_processed', 0)
+
+                    if all_matches:
+                        # Remove duplicates based on URL
+                        seen_urls = set()
+                        unique_matches = []
+                        for match in all_matches:
+                            if match.get('url') not in seen_urls:
+                                unique_matches.append(match)
+                                seen_urls.add(match.get('url'))
+
+                        search_results = unique_matches
+                        search_term = "Busca Mestrando Exterior"
+                        message = f"Busca Mestrando Exterior: {len(unique_matches)} documentos únicos encontrados para {len(mestrando_terms)} termos pesquisados."
                     else:
-                        message = f"Nenhum artigo encontrado para as sugestões. Processados {search_stats.get('xml_files_processed', 0)} arquivos XML."
+                        message = f"Nenhum documento encontrado para os termos de Mestrando Exterior. Processados {search_stats.get('total_files_processed', 0)} arquivos XML."
+
                 except Exception as e:
-                    print(f"[ERROR] Search all suggestions failed: {str(e)}")
-                    message = f"Erro na busca por todas as sugestões: {str(e)}"
+                    print(f"[ERROR] Search Mestrando Exterior failed: {str(e)}")
+                    message = f"Erro na busca Mestrando Exterior: {str(e)}"
                     search_stats = {'error': str(e)}
 
             elif action == 'search_all_terms':
