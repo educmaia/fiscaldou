@@ -12,12 +12,30 @@ import io
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import redis
 
 app = Flask(__name__)
 
 # Edge Config configuration
 EDGE_CONFIG_ID = os.getenv('EDGE_CONFIG')
 VERCEL_TOKEN = os.getenv('VERCEL_TOKEN')
+
+# Redis configuration
+REDIS_URL = os.getenv('REDIS_URL')
+redis_client = None
+
+def get_redis_client():
+    """Inicializa cliente Redis se disponível"""
+    global redis_client
+    if redis_client is None and REDIS_URL:
+        try:
+            redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+            redis_client.ping()  # Testa conexão
+            print("Redis conectado com sucesso!")
+        except Exception as e:
+            print(f"Erro ao conectar Redis: {e}")
+            redis_client = None
+    return redis_client
 
 def get_edge_config_url():
     """Get Edge Config API URL"""
@@ -98,6 +116,99 @@ def save_search_terms_to_edge_config(email, terms_list):
     terms_key = f'terms_{email.replace("@", "_at_").replace(".", "_dot_")}'
     return set_edge_config_item(terms_key, terms_list)
 
+# ===================== REDIS FUNCTIONS =====================
+
+def get_emails_from_redis():
+    """Get emails list from Redis"""
+    try:
+        r = get_redis_client()
+        if r:
+            emails = r.smembers("emails:active")
+            return set(emails)
+        return set()
+    except Exception as e:
+        print(f"Erro ao buscar emails no Redis: {e}")
+        return set()
+
+def save_emails_to_redis(emails_set):
+    """Save emails list to Redis"""
+    try:
+        r = get_redis_client()
+        if r:
+            # Limpa e recria o set
+            r.delete("emails:active")
+            r.delete("emails:all")
+
+            for email in emails_set:
+                email_data = {
+                    "email": email,
+                    "name": "",
+                    "active": True,
+                    "created_at": datetime.now().isoformat()
+                }
+
+                r.set(f"email:{email}", json.dumps(email_data))
+                r.sadd("emails:all", email)
+                r.sadd("emails:active", email)
+
+            return True
+        return False
+    except Exception as e:
+        print(f"Erro ao salvar emails no Redis: {e}")
+        return False
+
+def get_search_terms_from_redis(email):
+    """Get search terms for a specific email from Redis"""
+    try:
+        r = get_redis_client()
+        if r:
+            terms_key = f"email_terms:{email}"
+            terms_data = r.get(terms_key)
+            if terms_data:
+                return json.loads(terms_data)
+            return []
+        return []
+    except Exception as e:
+        print(f"Erro ao buscar termos no Redis para {email}: {e}")
+        return []
+
+def save_search_terms_to_redis(email, terms_list):
+    """Save search terms for a specific email to Redis"""
+    try:
+        r = get_redis_client()
+        if r:
+            terms_key = f"email_terms:{email}"
+            r.set(terms_key, json.dumps(terms_list))
+            return True
+        return False
+    except Exception as e:
+        print(f"Erro ao salvar termos no Redis para {email}: {e}")
+        return False
+
+def add_search_term_to_redis(email, term):
+    """Add a search term for an email in Redis"""
+    try:
+        current_terms = get_search_terms_from_redis(email)
+        if term not in current_terms:
+            current_terms.append(term)
+            return save_search_terms_to_redis(email, current_terms)
+        return True
+    except Exception as e:
+        print(f"Erro ao adicionar termo no Redis: {e}")
+        return False
+
+def remove_search_term_from_redis(email, term):
+    """Remove a search term for an email in Redis"""
+    try:
+        current_terms = get_search_terms_from_redis(email)
+        if term in current_terms:
+            current_terms.remove(term)
+            return save_search_terms_to_redis(email, current_terms)
+        return True
+    except Exception as e:
+        print(f"Erro ao remover termo no Redis: {e}")
+        return False
+
 def add_search_term_to_edge_config(email, term):
     """Add a search term for an email in Edge Config"""
     current_terms = get_search_terms_from_edge_config(email)
@@ -126,6 +237,16 @@ INLABS_PASSWORD = os.getenv('INLABS_PASSWORD', 'maia2807')
 DEFAULT_SECTIONS = "DO1 DO1E DO2 DO3 DO2E DO3E"
 URL_LOGIN = "https://inlabs.in.gov.br/logar.php"
 URL_DOWNLOAD = "https://inlabs.in.gov.br/index.php?p="
+
+# Sugestões fixas utilizadas pelo botão "Buscar Todas as Sugestões"
+SUGGESTION_TERMS = [
+    "23001.000069/2025-95",
+    "Associação Brasileira das Faculdades (Abrafi)",
+    "Resolução CNE/CES nº 2/2024",
+    "reconhecimento de diplomas de pós-graduação stricto sensu obtidos no exterior",
+    "589/2025",
+    "relatado em 4 de setembro de 2025",
+]
 
 def clean_html(text):
     """Remove HTML tags from text for better readability."""
@@ -1820,8 +1941,19 @@ def home():
         smtp_pass = bool(os.getenv('SMTP_PASS'))
         edge_config_available = bool(EDGE_CONFIG_ID)
         
-        # Carregar emails do Edge Config ou usar fallback
-        if edge_config_available:
+        # Carregar emails: Prioridade Redis > Edge Config > Memória
+        redis_available = get_redis_client() is not None
+
+        if redis_available:
+            current_emails = get_emails_from_redis()
+            if not current_emails and edge_config_available:
+                # Fallback para Edge Config se Redis vazio
+                current_emails = get_emails_from_edge_config()
+                if current_emails is None:
+                    current_emails = emails_storage  # Fallback final
+            elif not current_emails:
+                current_emails = emails_storage
+        elif edge_config_available:
             current_emails = get_emails_from_edge_config()
             if current_emails is None:
                 current_emails = emails_storage  # Fallback
@@ -1915,15 +2047,8 @@ def home():
             elif 'action' in request.form and request.form.get('action') == 'search_all_suggestions':
                 # Search for all predefined suggestions
                 try:
-                    # Lista das sugestões predefinidas
-                    suggestion_terms = [
-                        "23001.000069/2025-95",
-                        "Associação Brasileira das Faculdades (Abrafi)",
-                        "Resolução CNE/CES nº 2/2024",
-                        "reconhecimento de diplomas de pós-graduação stricto sensu obtidos no exterior",
-                        "589/2025",
-                        "relatado em 4 de setembro de 2025"
-                    ]
+                    # Lista das sugestões predefinidas centralizada
+                    suggestion_terms = SUGGESTION_TERMS
 
                     print(f"[DEBUG] Searching for all suggestions: {suggestion_terms}")
                     matches, search_stats = find_matches_vercel(suggestion_terms)
@@ -1966,13 +2091,21 @@ def home():
                     # Add search term to email
                     term = request.form.get('term', '').strip()
                     if email and term:
-                        if edge_config_available:
+                        redis_available = get_redis_client() is not None
+
+                        # Prioridade: Redis > Edge Config > Memória
+                        if redis_available:
+                            if add_search_term_to_redis(email, term):
+                                message = f'Termo "{term}" adicionado para {email}! (Redis) 🚀'
+                            else:
+                                message = f'Erro ao adicionar termo no Redis.'
+                        elif edge_config_available:
                             if add_search_term_to_edge_config(email, term):
-                                message = f'Termo "{term}" adicionado para {email}!'
+                                message = f'Termo "{term}" adicionado para {email}! (Edge Config)'
                             else:
                                 message = f'Termo "{term}" já existe para {email}.'
                         else:
-                            # Fallback
+                            # Fallback para memória
                             if email not in search_terms_storage:
                                 search_terms_storage[email] = []
                             if term not in search_terms_storage[email]:
@@ -1987,13 +2120,21 @@ def home():
                     # Remove search term from email
                     term = request.form.get('term', '').strip()
                     if email and term:
-                        if edge_config_available:
+                        redis_available = get_redis_client() is not None
+
+                        # Prioridade: Redis > Edge Config > Memória
+                        if redis_available:
+                            if remove_search_term_from_redis(email, term):
+                                message = f'Termo "{term}" removido de {email}! (Redis) 🚀'
+                            else:
+                                message = f'Erro ao remover termo do Redis.'
+                        elif edge_config_available:
                             if remove_search_term_from_edge_config(email, term):
-                                message = f'Termo "{term}" removido de {email}!'
+                                message = f'Termo "{term}" removido de {email}! (Edge Config)'
                             else:
                                 message = f'Termo "{term}" não encontrado para {email}.'
                         else:
-                            # Fallback
+                            # Fallback para memória
                             if email in search_terms_storage and term in search_terms_storage[email]:
                                 search_terms_storage[email].remove(term)
                                 message = f'Termo "{term}" removido de {email}! (Memória)'
@@ -2081,17 +2222,30 @@ def home():
                         message = f"Erro ao enviar para {email}: {str(e)}"
 
                 elif action in ['register', 'unregister'] and email:
+                    redis_available = get_redis_client() is not None
+
                     if action == 'register':
                         if email in current_emails:
                             message = f'Email {email} já está cadastrado.'
                         else:
                             current_emails.add(email)
-                            # Salvar no Edge Config ou fallback
-                            if edge_config_available:
+
+                            # Prioridade: Redis > Edge Config > Memória
+                            if redis_available:
+                                if save_emails_to_redis(current_emails):
+                                    message = f'Email {email} cadastrado com sucesso! (Redis) 🚀'
+                                else:
+                                    # Fallback para Edge Config
+                                    if edge_config_available and save_emails_to_edge_config(current_emails):
+                                        message = f'Email {email} cadastrado com sucesso! (Edge Config)'
+                                    else:
+                                        emails_storage.add(email)
+                                        message = f'Email {email} cadastrado com sucesso! (Memória)'
+                            elif edge_config_available:
                                 if save_emails_to_edge_config(current_emails):
                                     message = f'Email {email} cadastrado com sucesso! (Edge Config)'
                                 else:
-                                    emails_storage.add(email)  # Fallback
+                                    emails_storage.add(email)
                                     message = f'Email {email} cadastrado com sucesso! (Fallback)'
                             else:
                                 emails_storage.add(email)
@@ -2100,15 +2254,30 @@ def home():
                     elif action == 'unregister':
                         if email in current_emails:
                             current_emails.remove(email)
-                            # Salvar no Edge Config ou fallback
-                            if edge_config_available:
+
+                            # Prioridade: Redis > Edge Config > Memória
+                            if redis_available:
+                                if save_emails_to_redis(current_emails):
+                                    # Remove também os termos do email no Redis
+                                    save_search_terms_to_redis(email, [])
+                                    message = f'Email {email} removido com sucesso! (Redis) 🚀'
+                                else:
+                                    # Fallback para Edge Config
+                                    if edge_config_available and save_emails_to_edge_config(current_emails):
+                                        terms_key = f'terms_{email.replace("@", "_at_").replace(".", "_dot_")}'
+                                        set_edge_config_item(terms_key, [])
+                                        message = f'Email {email} removido com sucesso! (Edge Config)'
+                                    else:
+                                        emails_storage.discard(email)
+                                        search_terms_storage.pop(email, None)
+                                        message = f'Email {email} removido com sucesso! (Memória)'
+                            elif edge_config_available:
                                 if save_emails_to_edge_config(current_emails):
-                                    # Also remove all terms for this email
                                     terms_key = f'terms_{email.replace("@", "_at_").replace(".", "_dot_")}'
                                     set_edge_config_item(terms_key, [])
                                     message = f'Email {email} removido com sucesso! (Edge Config)'
                                 else:
-                                    emails_storage.discard(email)  # Fallback
+                                    emails_storage.discard(email)
                                     search_terms_storage.pop(email, None)
                                     message = f'Email {email} removido com sucesso! (Fallback)'
                             else:
@@ -2120,10 +2289,18 @@ def home():
                 else:
                     message = "Por favor, forneça um email válido."
         
-        # Carregar termos de busca para cada email
+        # Carregar termos de busca para cada email: Prioridade Redis > Edge Config > Memória
         email_terms = {}
         for email in current_emails:
-            if edge_config_available:
+            if redis_available:
+                email_terms[email] = get_search_terms_from_redis(email)
+                # Se Redis vazio, tenta Edge Config como fallback
+                if not email_terms[email] and edge_config_available:
+                    email_terms[email] = get_search_terms_from_edge_config(email)
+                # Se ainda vazio, usa memória
+                if not email_terms[email]:
+                    email_terms[email] = search_terms_storage.get(email, [])
+            elif edge_config_available:
                 email_terms[email] = get_search_terms_from_edge_config(email)
             else:
                 email_terms[email] = search_terms_storage.get(email, [])
