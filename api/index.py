@@ -1931,7 +1931,7 @@ HTML_TEMPLATE = '''
                 </form>
                 <div id="mestrandoProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
                 <div class="info-message" style="font-size: 0.9em; color: #666; margin-top: 5px; padding: 8px; background: #f9f9f9; border-radius: 4px;">
-                    ℹ️ Esta busca percorre 7 termos sequencialmente e pode demorar até 1 minuto.
+                    ℹ️ Esta busca percorre os 6 termos abaixo sequencialmente e pode demorar até 1 minuto para sua conclusão.
                 </div>
 
                 <div style="margin-top: 20px;">
@@ -2132,7 +2132,19 @@ def home():
 
                     print(f"[DEBUG] Searching for Mestrando Exterior terms: {mestrando_terms}")
                     all_matches = []
-                    search_stats = {'total_files_processed': 0, 'total_matches': 0}
+                    # Inicializar search_stats com todas as chaves necessárias
+                    search_stats = {
+                        'sections_downloaded': 0,
+                        'zip_files_downloaded': 0,
+                        'xml_files_processed': 0,
+                        'total_articles_extracted': 0,
+                        'articles_searched': 0,
+                        'matches_found': 0,
+                        'download_time': 0,
+                        'extraction_time': 0,
+                        'search_time': 0,
+                        'total_matches': 0
+                    }
 
                     # Busca sequencial por cada termo
                     for term in mestrando_terms:
@@ -2150,9 +2162,15 @@ def home():
 
                             all_matches.extend(matches)
                             search_stats['total_matches'] += len(matches)
+                            search_stats['matches_found'] += len(matches)
 
+                        # Acumular todas as estatísticas do term_stats
                         if term_stats:
-                            search_stats['total_files_processed'] += term_stats.get('xml_files_processed', 0)
+                            for key in ['sections_downloaded', 'zip_files_downloaded', 'xml_files_processed',
+                                       'total_articles_extracted', 'articles_searched', 'download_time',
+                                       'extraction_time', 'search_time']:
+                                if key in term_stats:
+                                    search_stats[key] += term_stats[key]
 
                     if all_matches:
                         # Remove duplicates based on URL
@@ -2165,9 +2183,9 @@ def home():
 
                         search_results = unique_matches
                         search_term = "Busca Mestrando Exterior"
-                        message = f"Busca Mestrando Exterior: {len(unique_matches)} documentos únicos encontrados para {len(mestrando_terms)} termos pesquisados."
+                        message = f"Busca Mestrando Exterior: {len(unique_matches)} documentos únicos encontrados para {len(mestrando_terms)} termos pesquisados em {search_stats.get('xml_files_processed', 0)} arquivos XML processados."
                     else:
-                        message = f"Nenhum documento encontrado para os termos de Mestrando Exterior. Processados {search_stats.get('total_files_processed', 0)} arquivos XML."
+                        message = f"Nenhum documento encontrado para os termos de Mestrando Exterior. Processados {search_stats.get('xml_files_processed', 0)} arquivos XML."
 
                 except Exception as e:
                     print(f"[ERROR] Search Mestrando Exterior failed: {str(e)}")
@@ -2406,6 +2424,73 @@ def home():
                             pass
 
 
+            elif request.form.get('action') == 'send_now_all':
+                # Send test email now for all registered emails using fixed Mestrando Exterior terms
+                try:
+                    processed = 0
+                    sent = 0
+
+                    # Usar termos fixos do Mestrando Exterior
+                    mestrando_terms = [
+                        '23001.000069/2025-95',
+                        'Associação Brasileira das Faculdades (Abrafi)',
+                        'Resolução CNE/CES',
+                        'Resolução CNE/CES nº 2/2024',
+                        'reconhecimento de diplomas',
+                        '589/2025',
+                        'relatado em 4 de setembro de 2025'
+                    ]
+
+                    # Buscar documentos com os termos fixos
+                    print(f"[DEBUG] Searching for Mestrando Exterior terms for email sending: {mestrando_terms}")
+                    matches, _stats = find_matches_vercel(mestrando_terms)
+
+                    # Clean HTML from results
+                    if matches:
+                        for result in matches:
+                            if 'snippets' in result and result['snippets']:
+                                result['snippets'] = [clean_html(snippet) for snippet in result['snippets']]
+
+                    try:
+                        from summarize import summarize_matches
+                        summarized = summarize_matches(matches)
+                    except Exception:
+                        summarized = matches
+
+                    # Enviar para todos os emails cadastrados
+                    for em in current_emails:
+                        html = format_email_body_html(em, date.today().strftime('%d/%m/%Y'), summarized)
+                        ok = send_email_html(em, f"DOU Mestrando Exterior - {date.today().strftime('%d/%m/%Y')}", html)
+                        sent += 1 if ok else 0
+                        processed += 1
+
+                    message = f"Envio concluído: {sent}/{processed} emails enviados com resultados da busca Mestrando Exterior."
+                except Exception as e:
+                    message = f"Erro ao enviar para todos: {str(e)}"
+
+                # Retornar imediatamente após processar send_now_all
+                email_terms = {}
+                for email in current_emails:
+                    if redis_available:
+                        email_terms[email] = get_search_terms_from_redis(email)
+                        if not email_terms[email] and edge_config_available:
+                            email_terms[email] = get_search_terms_from_edge_config(email)
+                        if not email_terms[email]:
+                            email_terms[email] = search_terms_storage.get(email, [])
+                    elif edge_config_available:
+                        email_terms[email] = get_search_terms_from_edge_config(email)
+                    else:
+                        email_terms[email] = search_terms_storage.get(email, [])
+
+                return render_template_string(HTML_TEMPLATE,
+                                            message=message,
+                                            results=search_results,
+                                            search_term=search_term,
+                                            use_ai=use_ai,
+                                            emails=list(current_emails),
+                                            email_terms=email_terms,
+                                            search_stats=search_stats if 'search_stats' in locals() else {})
+
             else:
                 # Handle email actions and other form actions
                 action = request.form.get('action')
@@ -2414,53 +2499,7 @@ def home():
                 # Ações que NÃO precisam de email devem estar nos elif acima
                 # Se chegou aqui, são ações relacionadas a email
 
-                # Ações de gerenciamento de termos removidas - agora utiliza apenas termos fixos do Mestrando Exterior
-
-                if action == 'send_now_all':
-                    # Send test email now for all registered emails using fixed Mestrando Exterior terms
-                    try:
-                        processed = 0
-                        sent = 0
-
-                        # Usar termos fixos do Mestrando Exterior
-                        mestrando_terms = [
-                            '23001.000069/2025-95',
-                            'Associação Brasileira das Faculdades (Abrafi)',
-                            'Resolução CNE/CES',
-                            'Resolução CNE/CES nº 2/2024',
-                            'reconhecimento de diplomas',
-                            '589/2025',
-                            'relatado em 4 de setembro de 2025'
-                        ]
-
-                        # Buscar documentos com os termos fixos
-                        print(f"[DEBUG] Searching for Mestrando Exterior terms for email sending: {mestrando_terms}")
-                        matches, _stats = find_matches_vercel(mestrando_terms)
-
-                        # Clean HTML from results
-                        if matches:
-                            for result in matches:
-                                if 'snippets' in result and result['snippets']:
-                                    result['snippets'] = [clean_html(snippet) for snippet in result['snippets']]
-
-                        try:
-                            from summarize import summarize_matches
-                            summarized = summarize_matches(matches)
-                        except Exception:
-                            summarized = matches
-
-                        # Enviar para todos os emails cadastrados
-                        for em in current_emails:
-                            html = format_email_body_html(em, date.today().strftime('%d/%m/%Y'), summarized)
-                            ok = send_email_html(em, f"DOU Mestrando Exterior - {date.today().strftime('%d/%m/%Y')}", html)
-                            sent += 1 if ok else 0
-                            processed += 1
-
-                        message = f"Envio concluído: {sent}/{processed} emails enviados com resultados da busca Mestrando Exterior."
-                    except Exception as e:
-                        message = f"Erro ao enviar para todos: {str(e)}"
-
-                elif action == 'send_now' and email:
+                if action == 'send_now' and email:
                     # Send test email now for a specific email using fixed Mestrando Exterior terms
                     try:
                         # Usar termos fixos do Mestrando Exterior
