@@ -1961,7 +1961,131 @@ def home():
             current_emails = emails_storage
         
         if request.method == 'POST':
-            if 'search_term' in request.form:
+            # Prioritizar ações específicas antes de verificar search_term
+            action = request.form.get('action')
+
+            if action == 'search_all_suggestions':
+                # Search for all predefined suggestions
+                try:
+                    # Lista das sugestões predefinidas centralizada
+                    suggestion_terms = SUGGESTION_TERMS
+
+                    print(f"[DEBUG] Searching for all suggestions: {suggestion_terms}")
+                    matches, search_stats = find_matches_vercel(suggestion_terms)
+
+                    if matches:
+                        # Clean HTML from summaries and snippets
+                        for result in matches:
+                            if 'snippets' in result and result['snippets']:
+                                result['snippets'] = [clean_html(snippet) for snippet in result['snippets']]
+                            # Add summary
+                            result['summary'] = f'Documento oficial relacionado aos termos: {", ".join(result["terms_matched"])}'
+
+                        search_results = matches
+                        search_term = ", ".join(suggestion_terms[:3]) + ("..." if len(suggestion_terms) > 3 else "")
+                        message = f"Busca por todas as sugestões: {len(matches)} artigos encontrados para {len(suggestion_terms)} termos sugeridos."
+                    else:
+                        message = f"Nenhum artigo encontrado para as sugestões. Processados {search_stats.get('xml_files_processed', 0)} arquivos XML."
+                except Exception as e:
+                    print(f"[ERROR] Search all suggestions failed: {str(e)}")
+                    message = f"Erro na busca por todas as sugestões: {str(e)}"
+                    search_stats = {'error': str(e)}
+
+            elif action == 'search_all_terms':
+                # Search for all terms from all registered emails
+                try:
+                    all_terms = []
+                    for email in current_emails:
+                        if redis_available:
+                            email_terms = get_search_terms_from_redis(email)
+                            if not email_terms and edge_config_available:
+                                email_terms = get_search_terms_from_edge_config(email)
+                            if not email_terms:
+                                email_terms = search_terms_storage.get(email, [])
+                        elif edge_config_available:
+                            email_terms = get_search_terms_from_edge_config(email)
+                        else:
+                            email_terms = search_terms_storage.get(email, [])
+                        all_terms.extend(email_terms)
+
+                    # Remove duplicates
+                    unique_terms = list(set(all_terms))
+
+                    if unique_terms:
+                        print(f"[DEBUG] Searching for all registered terms: {unique_terms}")
+                        matches, search_stats = find_matches_vercel(unique_terms)
+
+                        if matches:
+                            # Clean HTML from summaries and snippets
+                            for result in matches:
+                                if 'snippets' in result and result['snippets']:
+                                    result['snippets'] = [clean_html(snippet) for snippet in result['snippets']]
+                                # Add summary
+                                result['summary'] = f'Documento oficial relacionado aos termos cadastrados: {", ".join(result["terms_matched"])}'
+
+                            search_results = matches
+                            search_term = ", ".join(unique_terms[:3]) + ("..." if len(unique_terms) > 3 else "")
+                            message = f"Busca por todos os termos: {len(matches)} artigos encontrados para {len(unique_terms)} termos cadastrados."
+                        else:
+                            message = f"Nenhum artigo encontrado para os termos cadastrados. Processados {search_stats.get('xml_files_processed', 0)} arquivos XML."
+                    else:
+                        message = "Nenhum termo de busca cadastrado para os emails registrados."
+                        search_stats = {'terms_found': 0}
+                except Exception as e:
+                    print(f"[ERROR] Search all terms failed: {str(e)}")
+                    message = f"Erro na busca por todos os termos: {str(e)}"
+                    search_stats = {'error': str(e)}
+
+            elif action == 'refresh_cache':
+                # Handle cache refresh
+                try:
+                    print("[DEBUG] Refreshing cache - downloading fresh DOU data")
+                    matches, search_stats = find_matches_vercel(['teste'])  # Use a dummy term to trigger download
+                    message = f"Cache atualizado! Processados {search_stats.get('xml_files_processed', 0)} arquivos XML em {search_stats.get('download_time', 0):.2f}s"
+                except Exception as e:
+                    print(f"[ERROR] Cache refresh failed: {e}")
+                    message = f"Erro ao atualizar cache: {str(e)}"
+                    search_stats = {'error': str(e)}
+
+            elif action == 'send_now_all':
+                # Send emails to all registered users
+                try:
+                    sent = 0
+                    skipped = 0
+                    processed = 0
+                    for email in current_emails:
+                        processed += 1
+                        # Get terms for this email using Redis priority
+                        if redis_available:
+                            terms = get_search_terms_from_redis(email)
+                            if not terms and edge_config_available:
+                                terms = get_search_terms_from_edge_config(email)
+                            if not terms:
+                                terms = search_terms_storage.get(email, [])
+                        elif edge_config_available:
+                            terms = get_search_terms_from_edge_config(email)
+                        else:
+                            terms = search_terms_storage.get(email, [])
+
+                        if not terms:
+                            skipped += 1
+                            continue
+
+                        # Search and send
+                        matches, _ = find_matches_vercel(terms)
+                        if matches:
+                            summarized = matches[:5]  # Limit to 5 results
+                            smtp_user = os.getenv('SMTP_USER', '')
+                            smtp_pass = os.getenv('SMTP_PASS', '')
+
+                            if send_email_notification(email, summarized, smtp_user, smtp_pass):
+                                sent += 1
+
+                    message = f"Envio concluído: {sent}/{processed} emails enviados. {skipped} sem termos."
+                except Exception as e:
+                    message = f"Erro ao enviar para todos: {str(e)}"
+
+            elif 'search_term' in request.form:
                 # Handle search
                 search_term = request.form.get('search_term', '').strip()
                 use_ai = request.form.get('use_ai') == 'on'
@@ -2005,87 +2129,14 @@ def home():
                         except:
                             pass
 
-            elif 'action' in request.form and request.form.get('action') == 'search_all_terms':
-                # Search for all terms from all registered emails
-                try:
-                    all_terms = []
-                    for email in current_emails:
-                        if edge_config_available:
-                            email_terms = get_search_terms_from_edge_config(email)
-                        else:
-                            email_terms = search_terms_storage.get(email, [])
-                        all_terms.extend(email_terms)
-
-                    # Remove duplicates
-                    unique_terms = list(set(all_terms))
-
-                    if unique_terms:
-                        print(f"[DEBUG] Searching for all registered terms: {unique_terms}")
-                        matches, search_stats = find_matches_vercel(unique_terms)
-
-                        if matches:
-                            # Clean HTML from summaries and snippets
-                            for result in matches:
-                                if 'snippets' in result and result['snippets']:
-                                    result['snippets'] = [clean_html(snippet) for snippet in result['snippets']]
-                                # Add summary
-                                result['summary'] = f'Documento oficial relacionado aos termos: {", ".join(result["terms_matched"])}'
-
-                            search_results = matches
-                            search_term = ", ".join(unique_terms[:3]) + ("..." if len(unique_terms) > 3 else "")
-                            message = f"Busca por todos os termos cadastrados: {len(matches)} artigos encontrados para {len(unique_terms)} termos únicos."
-                        else:
-                            message = f"Nenhum artigo encontrado para os {len(unique_terms)} termos cadastrados. Processados {search_stats.get('xml_files_processed', 0)} arquivos XML."
-                    else:
-                        message = "Nenhum termo de busca cadastrado nos emails."
-                        search_stats = {}
-                except Exception as e:
-                    print(f"[ERROR] Search all terms failed: {str(e)}")
-                    message = f"Erro na busca por todos os termos: {str(e)}"
-                    search_stats = {'error': str(e)}
-
-            elif 'action' in request.form and request.form.get('action') == 'search_all_suggestions':
-                # Search for all predefined suggestions
-                try:
-                    # Lista das sugestões predefinidas centralizada
-                    suggestion_terms = SUGGESTION_TERMS
-
-                    print(f"[DEBUG] Searching for all suggestions: {suggestion_terms}")
-                    matches, search_stats = find_matches_vercel(suggestion_terms)
-
-                    if matches:
-                        # Clean HTML from summaries and snippets
-                        for result in matches:
-                            if 'snippets' in result and result['snippets']:
-                                result['snippets'] = [clean_html(snippet) for snippet in result['snippets']]
-                            # Add summary
-                            result['summary'] = f'Documento oficial relacionado aos termos: {", ".join(result["terms_matched"])}'
-
-                        search_results = matches
-                        search_term = ", ".join(suggestion_terms[:3]) + ("..." if len(suggestion_terms) > 3 else "")
-                        message = f"Busca por todas as sugestões: {len(matches)} artigos encontrados para {len(suggestion_terms)} termos sugeridos."
-                    else:
-                        message = f"Nenhum artigo encontrado para as sugestões. Processados {search_stats.get('xml_files_processed', 0)} arquivos XML."
-                except Exception as e:
-                    print(f"[ERROR] Search all suggestions failed: {str(e)}")
-                    message = f"Erro na busca por todas as sugestões: {str(e)}"
-                    search_stats = {'error': str(e)}
-
-            elif 'action' in request.form and request.form.get('action') == 'refresh_cache':
-                # Handle cache refresh
-                try:
-                    print("[DEBUG] Refreshing cache - downloading fresh DOU data")
-                    matches, search_stats = find_matches_vercel(['teste'])  # Use a dummy term to trigger download
-                    message = f"Cache atualizado! Processados {search_stats.get('xml_files_processed', 0)} arquivos XML em {search_stats.get('download_time', 0):.2f}s"
-                except Exception as e:
-                    print(f"[ERROR] Cache refresh failed: {e}")
-                    message = f"Erro ao atualizar cache: {str(e)}"
-                    search_stats = {'error': str(e)}
 
             else:
-                # Handle email actions
+                # Handle email actions and other form actions
                 action = request.form.get('action')
                 email = request.form.get('email', '').strip().lower()
+
+                # Ações que NÃO precisam de email devem estar nos elif acima
+                # Se chegou aqui, são ações relacionadas a email
 
                 if action == 'add_term':
                     # Add search term to email
