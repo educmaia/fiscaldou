@@ -13,10 +13,14 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-# Add current directory to path for storage modules
+# Configuração de path para imports
 import sys
+import os
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
+
+# Adicionar diretório atual ao path
+current_dir = Path(__file__).parent
+sys.path.insert(0, str(current_dir))
 
 # Storage modules
 from storage.redis_client import get_redis_client

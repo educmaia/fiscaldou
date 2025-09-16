@@ -33,4 +33,10 @@ extracted/
 
 # OS
 .DS_Store
-Thumbs.dbnode_modules/
+Thumbs.db
+node_modules/
+
+# Build artifacts
+.vercel/
+build/
+dist/
