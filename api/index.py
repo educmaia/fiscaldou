@@ -13,29 +13,118 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-# Configuração de path para imports
-import sys
+# Configuração simples para Vercel - storage inline temporário
 import os
-from pathlib import Path
 
-# Adicionar diretório atual ao path
-current_dir = Path(__file__).parent
-sys.path.insert(0, str(current_dir))
+# Edge Config configuration
+EDGE_CONFIG_ID = os.getenv('EDGE_CONFIG')
+VERCEL_TOKEN = os.getenv('VERCEL_TOKEN')
 
-# Storage modules
-from storage.redis_client import get_redis_client
-from storage.edge_config import get_from_edge_config, set_edge_config_item
-from storage.email_storage import (
-    get_current_emails,
-    save_emails,
-    get_email_terms,
-    save_email_terms,
-    add_email_term,
-    remove_email_term,
-    get_all_email_terms,
-    emails_storage,
-    search_terms_storage
-)
+# Fallback storage simples
+emails_storage = set()
+search_terms_storage = {}
+
+def get_redis_client():
+    """Redis desabilitado temporariamente"""
+    return None
+
+def get_from_edge_config(key):
+    """Get value from Edge Config"""
+    try:
+        if not EDGE_CONFIG_ID:
+            return None
+        url = f"https://edge-config.vercel.com/{EDGE_CONFIG_ID}"
+        headers = {'Authorization': f'Bearer {VERCEL_TOKEN}' if VERCEL_TOKEN else ''}
+        response = requests.get(f"{url}/{key}", headers=headers, timeout=5)
+        if response.status_code == 200:
+            return response.json()
+        return None
+    except Exception as e:
+        print(f"Error reading from Edge Config: {e}")
+        return None
+
+def set_edge_config_item(key, value):
+    """Set value in Edge Config"""
+    try:
+        if not EDGE_CONFIG_ID or not VERCEL_TOKEN:
+            return False
+        url = f"https://api.vercel.com/v1/edge-config/{EDGE_CONFIG_ID}/items"
+        headers = {'Authorization': f'Bearer {VERCEL_TOKEN}', 'Content-Type': 'application/json'}
+        data = {'items': [{'operation': 'upsert', 'key': key, 'value': value}]}
+        response = requests.patch(url, headers=headers, json=data, timeout=10)
+        return response.status_code == 200
+    except Exception as e:
+        print(f"Error writing to Edge Config: {e}")
+        return False
+
+def get_current_emails():
+    """Get current emails - Edge Config > Memory fallback"""
+    try:
+        emails = get_from_edge_config('emails')
+        if emails and isinstance(emails, list):
+            return set(emails)
+        return emails_storage
+    except:
+        return emails_storage
+
+def save_emails(emails_set):
+    """Save emails - Edge Config > Memory fallback"""
+    try:
+        emails_list = list(emails_set)
+        success = set_edge_config_item('emails', emails_list)
+        emails_storage.clear()
+        emails_storage.update(emails_set)
+        return True
+    except:
+        emails_storage.clear()
+        emails_storage.update(emails_set)
+        return True
+
+def get_email_terms(email):
+    """Get search terms for email"""
+    try:
+        terms_key = f'terms_{email.replace("@", "_at_").replace(".", "_dot_")}'
+        terms = get_from_edge_config(terms_key)
+        if terms and isinstance(terms, list):
+            return terms
+        return search_terms_storage.get(email, [])
+    except:
+        return search_terms_storage.get(email, [])
+
+def save_email_terms(email, terms_list):
+    """Save search terms for email"""
+    try:
+        terms_key = f'terms_{email.replace("@", "_at_").replace(".", "_dot_")}'
+        success = set_edge_config_item(terms_key, terms_list)
+        search_terms_storage[email] = terms_list
+        return True
+    except:
+        search_terms_storage[email] = terms_list
+        return True
+
+def add_email_term(email, term):
+    """Add search term for email"""
+    current_terms = get_email_terms(email)
+    if term not in current_terms:
+        current_terms.append(term)
+        return save_email_terms(email, current_terms)
+    return True
+
+def remove_email_term(email, term):
+    """Remove search term for email"""
+    current_terms = get_email_terms(email)
+    if term in current_terms:
+        current_terms.remove(term)
+        return save_email_terms(email, current_terms)
+    return True
+
+def get_all_email_terms():
+    """Get terms for all registered emails"""
+    current_emails = get_current_emails()
+    email_terms = {}
+    for email in current_emails:
+        email_terms[email] = get_email_terms(email)
+    return email_terms
 
 # Carregar variáveis de ambiente do .env
 try:
