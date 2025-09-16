@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/fiscaldou.py": {
-      "runtime": "@vercel/python@3.12.0"
+      "runtime": "@vercel/python@3.9.16"
     }
   },
   "routes": [
