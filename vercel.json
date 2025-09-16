@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/fiscaldou.py": {
-      "runtime": "@vercel/python@4.3.0"
+      "runtime": "python3.9"
     }
   },
   "crons": [
