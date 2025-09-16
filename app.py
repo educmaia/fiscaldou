@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 # Database initialization
 def init_db():
-    """Initialize the database with required tables."""
+    """Initialize the database with required tables and migrate if needed."""
     DB_PATH = Path('emails.db')
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -19,15 +19,44 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT UNIQUE NOT NULL
         )''')
+
+    # Create search_terms table (new schema). If it already exists, we'll migrate below.
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS search_terms (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT NOT NULL,
             term TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(email, term),
-            FOREIGN KEY (email) REFERENCES emails (email) ON DELETE CASCADE
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )''')
+
+    # Migration: ensure 'email' column exists in search_terms
+    cursor.execute("PRAGMA table_info('search_terms')")
+    cols = {row[1] for row in cursor.fetchall()}  # row[1] is column name
+
+    if 'email' not in cols:
+        # Older schema without 'email' column; add it
+        cursor.execute("ALTER TABLE search_terms ADD COLUMN email TEXT")
+        # If there is an 'email_id' column, try to backfill from emails table
+        if 'email_id' in cols:
+            cursor.execute('''
+                UPDATE search_terms
+                SET email = (
+                    SELECT e.email FROM emails e WHERE e.id = search_terms.email_id
+                )
+                WHERE email IS NULL
+            ''')
+
+    # Migration: ensure created_at column exists
+    cursor.execute("PRAGMA table_info('search_terms')")
+    cols = {row[1] for row in cursor.fetchall()}
+    if 'created_at' not in cols:
+        cursor.execute("ALTER TABLE search_terms ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+
+    # Ensure unique constraint on (email, term) via index (works even if table pre-existed)
+    cursor.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_search_terms_email_term
+        ON search_terms(email, term)
+    ''')
 
     conn.commit()
     conn.close()
