@@ -1,5 +1,5 @@
 from http.server import BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, quote
 import os
 import json
 import re
@@ -398,5 +398,5 @@ class handler(BaseHTTPRequestHandler):
 
         # Redirect back to main page with message
         self.send_response(302)
-        self.send_header('Location', f'/?message={message}')
+        self.send_header('Location', f'/?message={quote(message)}')
         self.end_headers()
