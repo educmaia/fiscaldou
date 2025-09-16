@@ -1,25 +1,13 @@
 {
   "functions": {
     "api/fiscaldou.py": {
-      "runtime": "@vercel/python@4.3.0"
+      "runtime": "@vercel/python@3.12.0"
     }
   },
-  "crons": [
-    {
-      "path": "/api/cron/daily",
-      "schedule": "0 11 * * *"
-    }
-  ],
   "routes": [
     {
       "src": "/(.*)",
       "dest": "/api/fiscaldou.py"
     }
-  ],
-  "build": {
-    "env": {
-      "PYTHONDONTWRITEBYTECODE": "1",
-      "PIP_DISABLE_PIP_VERSION_CHECK": "1"
-    }
-  }
+  ]
 }

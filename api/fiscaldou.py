@@ -356,9 +356,21 @@ def send_email_notification(email, matches):
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         """Handle GET requests."""
-        parsed_url = urlparse(self.path)
-        path = parsed_url.path
-        query = parse_qs(parsed_url.query)
+        try:
+            print(f"[DEBUG] GET request to path: {self.path}")
+            print(f"[DEBUG] Current working directory: {os.getcwd()}")
+            print(f"[DEBUG] Files in current dir: {os.listdir('.')}")
+
+            parsed_url = urlparse(self.path)
+            path = parsed_url.path
+            query = parse_qs(parsed_url.query)
+
+            print(f"[DEBUG] Parsed path: {path}")
+        except Exception as e:
+            print(f"[ERROR] Exception in do_GET: {e}")
+            self.send_response(500)
+            self.end_headers()
+            return
 
         if path == '/health':
             self._handle_health()
