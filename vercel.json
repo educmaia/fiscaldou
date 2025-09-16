@@ -1,6 +1,6 @@
 {
   "functions": {
-    "api/index.py": {
+    "api/fiscaldou.py": {
       "runtime": "@vercel/python@4.3.0"
     }
   },
@@ -13,7 +13,13 @@
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/api/index.py"
+      "dest": "/api/fiscaldou.py"
     }
-  ]
+  ],
+  "build": {
+    "env": {
+      "PYTHONDONTWRITEBYTECODE": "1",
+      "PIP_DISABLE_PIP_VERSION_CHECK": "1"
+    }
+  }
 }

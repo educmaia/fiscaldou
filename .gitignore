@@ -40,3 +40,5 @@ node_modules/
 .vercel/
 build/
 dist/
+
+.vercel

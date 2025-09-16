@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template_string, render_template, url_for
+from flask import Flask, request, render_template_string, jsonify
 import os
 import re
 import requests
@@ -6,7 +6,6 @@ import json
 import zipfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, date, timedelta
-from pathlib import Path
 import tempfile
 import io
 import smtplib
@@ -134,7 +133,7 @@ except ImportError:
     # Se python-dotenv não estiver disponível, continua sem
     pass
 
-app = Flask(__name__, template_folder='templates', static_folder='templates/static')
+app = Flask(__name__)
 
 
 # INLABS credentials

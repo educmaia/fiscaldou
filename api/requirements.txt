@@ -1,5 +1,1 @@
-flask==3.0.0
-requests==2.31.0
-python-dotenv==1.0.0
-lxml==4.9.3
-beautifulsoup4==4.12.2
+# No external dependencies - using only Python standard library
