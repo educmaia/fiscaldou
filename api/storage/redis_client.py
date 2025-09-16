@@ -5,8 +5,14 @@ Handles all Redis operations for email and search terms storage
 
 import os
 import json
-import redis
 from datetime import datetime
+
+try:
+    import redis
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+    redis = None
 
 
 # Global Redis client
@@ -17,6 +23,9 @@ REDIS_URL = os.getenv('REDIS_URL')
 def get_redis_client():
     """Inicializa cliente Redis se disponível"""
     global redis_client
+    if not REDIS_AVAILABLE or not redis:
+        return None
+
     if redis_client is None and REDIS_URL:
         try:
             redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
