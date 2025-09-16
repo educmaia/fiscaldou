@@ -3,15 +3,38 @@ from urllib.parse import urlparse, parse_qs, quote
 import os
 import json
 import re
-from datetime import datetime
+import requests
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from datetime import datetime, date, timedelta
+from pathlib import Path
+import zipfile
+import xml.etree.ElementTree as ET
 
 # Edge Config configuration
 EDGE_CONFIG_ID = os.getenv('EDGE_CONFIG')
 VERCEL_TOKEN = os.getenv('VERCEL_TOKEN')
 
+# INLABS credentials
+INLABS_EMAIL = os.getenv('INLABS_EMAIL')
+INLABS_PASSWORD = os.getenv('INLABS_PASSWORD')
+
+# SMTP Configuration
+SMTP_SERVER = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
+SMTP_PORT = int(os.getenv('SMTP_PORT', 587))
+SMTP_USER = os.getenv('SMTP_USER')
+SMTP_PASS = os.getenv('SMTP_PASS')
+
+# DOU sections
+DEFAULT_SECTIONS = "DO1 DO1E DO2 DO3 DO2E DO3E"
+URL_LOGIN = "https://inlabs.in.gov.br/logar.php"
+URL_DOWNLOAD = "https://inlabs.in.gov.br/index.php?p="
+
 # Fallback storage simples
 emails_storage = set()
 search_terms_storage = {}
+cache_storage = {}
 
 def get_current_emails():
     """Get current emails - fallback to memory storage"""
@@ -128,6 +151,221 @@ def render_template(template_content, **context):
 
     return result
 
+def create_inlabs_session():
+    """Create and login to INLABS session."""
+    if not INLABS_EMAIL or not INLABS_PASSWORD:
+        raise ValueError("INLABS credentials not configured")
+
+    payload = {"email": INLABS_EMAIL, "password": INLABS_PASSWORD}
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+    s = requests.Session()
+    try:
+        response = s.post(URL_LOGIN, data=payload, headers=headers)
+        if s.cookies.get('inlabs_session_cookie'):
+            return s
+        else:
+            raise ValueError("INLABS login failed")
+    except Exception as e:
+        raise ValueError(f"INLABS connection error: {e}")
+
+def download_dou_xml(target_date=None, sections=None):
+    """Download DOU XML files for given date."""
+    if not sections:
+        sections = DEFAULT_SECTIONS.split()
+
+    if not target_date:
+        target_date = date.today()
+
+    try:
+        s = create_inlabs_session()
+        cookie = s.cookies.get('inlabs_session_cookie')
+
+        data_completa = target_date.strftime("%Y-%m-%d")
+        downloaded_content = []
+
+        for dou_secao in sections:
+            url_arquivo = f"{URL_DOWNLOAD}{data_completa}&dl={data_completa}-{dou_secao}.zip"
+            cabecalho_arquivo = {
+                'Cookie': f'inlabs_session_cookie={cookie}',
+                'origem': '736372697074'
+            }
+
+            response = s.request("GET", url_arquivo, headers=cabecalho_arquivo)
+
+            if response.status_code == 200 and response.content.startswith(b'PK'):
+                downloaded_content.append({
+                    'section': dou_secao,
+                    'content': response.content,
+                    'date': data_completa
+                })
+
+        s.close()
+        return downloaded_content
+    except Exception as e:
+        print(f"Download error: {e}")
+        return []
+
+def extract_articles_from_zip(zip_content):
+    """Extract articles from ZIP content."""
+    articles = []
+    try:
+        import io
+        zip_buffer = io.BytesIO(zip_content)
+        with zipfile.ZipFile(zip_buffer, 'r') as zip_file:
+            for file_name in zip_file.namelist():
+                if file_name.endswith('.xml'):
+                    with zip_file.open(file_name) as xml_file:
+                        content = xml_file.read().decode('utf-8', errors='ignore')
+                        try:
+                            root = ET.fromstring(content)
+                            for article in root.findall('.//article'):
+                                text_content = ET.tostring(article, encoding='unicode', method='text')
+                                if text_content and len(text_content.strip()) > 50:
+                                    articles.append({
+                                        'filename': file_name,
+                                        'text': text_content.strip(),
+                                        'xml_content': content,
+                                        'section': file_name.split('-')[2] if '-' in file_name else 'unknown'
+                                    })
+                        except ET.ParseError:
+                            continue
+    except Exception as e:
+        print(f"Extraction error: {e}")
+    return articles
+
+def search_dou_real(search_terms=None, use_cache=True):
+    """Perform real DOU search."""
+    if not search_terms:
+        search_terms = []
+        for email in get_current_emails():
+            search_terms.extend(get_email_terms(email))
+        search_terms = list(set(search_terms))
+
+    if not search_terms:
+        return []
+
+    # Check cache first
+    cache_key = f"search_{date.today().isoformat()}"
+    if use_cache and cache_key in cache_storage:
+        cached_results = cache_storage[cache_key]
+        if cached_results.get('timestamp') and \
+           (datetime.now() - datetime.fromisoformat(cached_results['timestamp'])).hours < 6:
+            return cached_results.get('results', [])
+
+    try:
+        # Download DOU files
+        zip_files = download_dou_xml()
+        if not zip_files:
+            return []
+
+        # Extract articles
+        all_articles = []
+        for zip_data in zip_files:
+            articles = extract_articles_from_zip(zip_data['content'])
+            for article in articles:
+                article['date'] = zip_data['date']
+            all_articles.extend(articles)
+
+        # Search for terms
+        matches = []
+        for article in all_articles:
+            text_lower = article['text'].lower()
+            matched_terms = []
+            snippets = []
+
+            for term in search_terms:
+                if term.lower() in text_lower:
+                    matched_terms.append(term)
+
+                    # Extract snippets
+                    positions = [m.start() for m in re.finditer(re.escape(term.lower()), text_lower)]
+                    for pos in positions:
+                        start = max(0, pos - 100)
+                        end = min(len(article['text']), pos + len(term) + 100)
+                        snippet = article['text'][start:end].strip()
+                        snippets.append(snippet)
+
+            if matched_terms:
+                matches.append({
+                    'article': article,
+                    'terms_matched': matched_terms,
+                    'snippets': snippets
+                })
+
+        # Cache results
+        cache_storage[cache_key] = {
+            'results': matches,
+            'timestamp': datetime.now().isoformat()
+        }
+
+        return matches
+    except Exception as e:
+        print(f"Search error: {e}")
+        return []
+
+def send_email_notification(email, matches):
+    """Send email notification for matches."""
+    if not SMTP_USER or not SMTP_PASS:
+        return False
+
+    try:
+        subject = f"DOU Fiscalizações - {len(matches)} ocorrência(s) encontrada(s)"
+
+        body = f"""
+        <html>
+        <body>
+        <h2>🏛️ FiscalDOU - Notificações Encontradas</h2>
+        <p>Foram encontradas {len(matches)} ocorrência(s) hoje:</p>
+        """
+
+        for i, match in enumerate(matches, 1):
+            article = match['article']
+            terms = ', '.join(match['terms_matched'])
+            snippets = match['snippets'][:2]  # Max 2 snippets
+
+            body += f"""
+            <div style="border: 1px solid #ddd; margin: 10px 0; padding: 15px; border-radius: 5px;">
+                <h3>📄 Ocorrência {i}</h3>
+                <p><strong>Arquivo:</strong> {article['filename']}</p>
+                <p><strong>Seção:</strong> {article['section']}</p>
+                <p><strong>Termos encontrados:</strong> {terms}</p>
+                <p><strong>Trechos relevantes:</strong></p>
+                <ul>
+            """
+            for snippet in snippets:
+                body += f"<li><em>{snippet[:200]}...</em></li>"
+
+            body += "</ul></div>"
+
+        body += """
+        <p>Atenciosamente,<br>
+        <strong>FiscalDOU</strong><br>
+        Sistema de Monitoramento do Diário Oficial da União</p>
+        </body>
+        </html>
+        """
+
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From'] = SMTP_USER
+        msg['To'] = email
+        msg.attach(MIMEText(body, 'html'))
+
+        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+        server.starttls()
+        server.login(SMTP_USER, SMTP_PASS)
+        server.send_message(msg)
+        server.quit()
+
+        return True
+    except Exception as e:
+        print(f"Email error: {e}")
+        return False
+
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         """Handle GET requests."""
@@ -212,25 +450,41 @@ class handler(BaseHTTPRequestHandler):
             emails = sorted(list(get_current_emails()))
             total_terms = sum(len(get_email_terms(email)) for email in emails)
 
+            # Execute real search
+            matches = search_dou_real()
+            sent_count = 0
+
+            # Send notifications to all registered emails
+            if matches and emails:
+                for email in emails:
+                    if send_email_notification(email, matches):
+                        sent_count += 1
+
             response = {
                 'ok': True,
-                'message': 'Cron job executed successfully with template system',
+                'message': 'Cron job executed successfully with real DOU search',
                 'timestamp': datetime.now().isoformat(),
                 'emails_registered': len(emails),
                 'total_search_terms': total_terms,
-                'sent': 0,  # Demo mode
-                'mode': 'demonstration',
-                'template_system': 'active',
+                'matches_found': len(matches),
+                'emails_sent': sent_count,
+                'mode': 'production',
+                'search_system': 'active',
                 'details': [
                     {
                         'email': email,
-                        'status': 'demo-mode',
+                        'status': 'notification-sent' if email in emails else 'not-sent',
                         'terms_count': len(get_email_terms(email))
                     } for email in emails
                 ]
             }
         except Exception as e:
-            response = {'ok': False, 'error': str(e), 'timestamp': datetime.now().isoformat()}
+            response = {
+                'ok': False,
+                'error': str(e),
+                'timestamp': datetime.now().isoformat(),
+                'mode': 'error'
+            }
 
         self.wfile.write(json.dumps(response).encode('utf-8'))
 
@@ -363,32 +617,74 @@ class handler(BaseHTTPRequestHandler):
                     message = f'❌ Email {email} não encontrado.'
 
             elif action == 'search_mestrando_exterior':
-                message = "🔍 Busca Mestrando Exterior executada! Sistema de template ativo - modo demonstração"
+                try:
+                    matches = search_dou_real(['mestrando', 'mestrado', 'exterior', 'internacional'])
+                    if matches:
+                        message = f"🔍 Busca real executada! Encontradas {len(matches)} ocorrências para termos relacionados a mestrado no exterior"
+                    else:
+                        message = "🔍 Busca real executada! Nenhuma ocorrência encontrada para termos relacionados a mestrado no exterior"
+                except Exception as e:
+                    message = f"❌ Erro na busca real: {str(e)}"
 
             elif action == 'search_all_terms':
-                all_terms = []
-                for em in current_emails:
-                    terms = get_email_terms(em)
-                    all_terms.extend(terms)
-                unique_terms = list(set(all_terms))
-                if unique_terms:
-                    message = f"🔍 Busca executada para {len(unique_terms)} termos únicos - sistema de template ativo"
-                else:
-                    message = "⚠️ Nenhum termo cadastrado para busca."
+                try:
+                    matches = search_dou_real()
+                    if matches:
+                        message = f"🔍 Busca real executada! Encontradas {len(matches)} ocorrências para todos os termos cadastrados"
+                    else:
+                        message = "🔍 Busca real executada! Nenhuma ocorrência encontrada para os termos cadastrados"
+                except Exception as e:
+                    message = f"❌ Erro na busca real: {str(e)}"
 
             elif action == 'send_now' and email:
-                terms_count = len(get_email_terms(email))
-                message = f"📧 Email de teste enviado para {email}! ({terms_count} termos) - template system"
+                try:
+                    matches = search_dou_real()
+                    if matches:
+                        if send_email_notification(email, matches):
+                            message = f"📧 Email enviado para {email}! {len(matches)} ocorrência(s) encontrada(s)"
+                        else:
+                            message = f"❌ Erro ao enviar email para {email}"
+                    else:
+                        message = f"📧 Email enviado para {email} - Nenhuma ocorrência encontrada hoje"
+                except Exception as e:
+                    message = f"❌ Erro ao processar envio: {str(e)}"
 
             elif action == 'send_now_all':
-                total_terms = sum(len(get_email_terms(em)) for em in current_emails)
-                message = f"📧 Emails enviados para {len(current_emails)} endereços! (Template system ativo)"
+                try:
+                    matches = search_dou_real()
+                    sent_count = 0
+                    for em in current_emails:
+                        if send_email_notification(em, matches):
+                            sent_count += 1
+
+                    if matches:
+                        message = f"📧 Emails enviados para {sent_count} endereços! {len(matches)} ocorrência(s) encontrada(s)"
+                    else:
+                        message = f"📧 Emails enviados para {sent_count} endereços - Nenhuma ocorrência encontrada hoje"
+                except Exception as e:
+                    message = f"❌ Erro no envio em lote: {str(e)}"
 
             elif action == 'refresh_cache':
-                message = "🔄 Cache atualizado com sucesso! Template system funcionando."
+                try:
+                    # Clear cache and force new search
+                    cache_key = f"search_{date.today().isoformat()}"
+                    if cache_key in cache_storage:
+                        del cache_storage[cache_key]
+
+                    matches = search_dou_real(use_cache=False)
+                    message = f"🔄 Cache atualizado! {len(matches)} ocorrência(s) encontrada(s) na busca mais recente"
+                except Exception as e:
+                    message = f"❌ Erro ao atualizar cache: {str(e)}"
 
             elif search_term:
-                message = f'🔍 Busca realizada por "{search_term}" - template system ativo (modo demonstração)'
+                try:
+                    matches = search_dou_real([search_term])
+                    if matches:
+                        message = f'🔍 Busca real executada por "{search_term}"! Encontradas {len(matches)} ocorrência(s)'
+                    else:
+                        message = f'🔍 Busca real executada por "{search_term}" - Nenhuma ocorrência encontrada'
+                except Exception as e:
+                    message = f'❌ Erro na busca por "{search_term}": {str(e)}'
 
             else:
                 message = "⚠️ Por favor, forneça um termo de busca ou selecione uma ação."
