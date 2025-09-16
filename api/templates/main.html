@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DOU Notifier - Serverless</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="header">
+        <h1>CNE Mestres Notifier</h1>
+        <p>Fique por dentro da publicação do CNE sobre Mestrados no exterior</p>
+    </div>
+
+    {% if message %}
+        <div class="message {% if 'Erro' in message or 'não encontrado' in message %}error{% else %}success{% endif %}">
+            {{ message }}
+        </div>
+    {% endif %}
+
+    <!-- SEÇÃO SUPERIOR: 3 COLUNAS LADO A LADO -->
+    <div class="top-section">
+        <!-- COLUNA 1: ESTATÍSTICAS DA BUSCA -->
+        <div class="top-column top-column-1">
+            <div class="card">
+                <h2>📊 Estatísticas da Busca</h2>
+
+                <!-- Botão de Atualização -->
+                <form method="post" style="margin-bottom: 20px;" id="refreshCacheForm">
+                    <input type="hidden" name="action" value="refresh_cache">
+                    <button type="submit" style="background: var(--warning-color); width: 100%;" id="refreshCacheBtn">
+                        🔄 Atualizar Cache DOU
+                    </button>
+                </form>
+                <div id="refreshProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
+
+                {% if search_stats %}
+                    {% if search_stats.get('error') %}
+                        <div style="padding: 15px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: var(--radius); color: var(--error-color); margin-bottom: 20px;">
+                            <h4>🚨 Erro no Processamento</h4>
+                            <p><strong>Erro:</strong> {{ search_stats.get('error', 'Unknown error') }}</p>
+                            <details style="margin-top: 10px;">
+                                <summary style="cursor: pointer; color: var(--primary-color);">Ver detalhes técnicos</summary>
+                                <pre style="white-space: pre-wrap; font-size: 0.8rem; margin-top: 10px;">{{ search_stats.get('traceback', 'No traceback available') }}</pre>
+                            </details>
+                            <p style="margin-top: 10px;"><a href="/debug" target="_blank" style="color: var(--primary-color);">🔧 Ir para página de debug</a></p>
+                        </div>
+                    {% else %}
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <span class="stat-number">{{ search_stats.get('xml_files_processed', 0) }}</span>
+                                <div class="stat-label">Arquivos XML<br>Processados</div>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-number">{{ search_stats.get('total_articles_extracted', 0) }}</span>
+                                <div class="stat-label">Artigos<br>Extraídos</div>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-number">{{ search_stats.get('sections_downloaded', 0) }}</span>
+                                <div class="stat-label">Seções DOU<br>Baixadas</div>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-number">{{ search_stats.get('matches_found', 0) }}</span>
+                                <div class="stat-label">Matches<br>Encontrados</div>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 20px; padding: 15px; background: var(--background); border-radius: var(--radius); border: 1px solid var(--border);">
+                            <h4>⏱️ Tempo de Processamento</h4>
+                            <ul style="margin: 10px 0; padding-left: 20px; color: var(--text-secondary); font-size: 0.9rem;">
+                                <li>Download: {{ search_stats.get('download_time', 0) }}s</li>
+                                <li>Extração: {{ search_stats.get('extraction_time', 0) }}s</li>
+                                <li>Busca: {{ search_stats.get('search_time', 0) }}s</li>
+                                <li><strong>Total: {{ (search_stats.get('download_time', 0) + search_stats.get('extraction_time', 0) + search_stats.get('search_time', 0))|round(2) }}s</strong></li>
+                            </ul>
+                        </div>
+                    {% endif %}
+                {% else %}
+                    <div style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 40px;">
+                        📊 Faça uma busca para ver as estatísticas de processamento
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- COLUNA 2: BUSCAR NO DOU -->
+        <div class="top-column top-column-2">
+            <div class="card">
+                <h2>🔍 Buscar no DOU</h2>
+                <form method="post" id="searchForm">
+                    <div class="form-group">
+                        <label for="search_term">Termo de busca</label>
+                        <input type="text" id="search_term" name="search_term"
+                               placeholder="Digite o termo de busca"
+                               value="{{ search_term or '' }}" required>
+                    </div>
+                    <button type="submit" id="searchBtn">Buscar</button>
+                </form>
+                <div id="searchProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
+
+                <!-- Botão para busca Mestrando Exterior -->
+                <form method="post" style="margin-top: 15px;" id="searchMestrandoForm">
+                    <button type="submit" name="action" value="search_mestrando_exterior" style="background: var(--primary-color); width: 100%;" id="searchMestrandoBtn">
+                        🎓 Busca Mestrando Exterior
+                    </button>
+                </form>
+                <div id="mestrandoProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
+                <div class="info-message" style="font-size: 0.9em; color: #666; margin-top: 5px; padding: 8px; background: #f9f9f9; border-radius: 4px;">
+                    ℹ️ Esta busca percorre os 7 termos abaixo sequencialmente e pode demorar até 1 minuto para sua conclusão.
+                </div>
+
+                <div style="margin-top: 20px;">
+                    <div class="suggestions-panel">
+                        <strong>Sugestões de busca:</strong>
+                        <div style="margin-top: 10px;">
+                            <span class="suggestion-chip" onclick="setTerm('23001.000069/2025-95')">23001.000069/2025-95</span>
+                            <span class="suggestion-chip" onclick="setTerm('Associação Brasileira das Faculdades (Abrafi)')">Associação Brasileira das Faculdades (Abrafi)</span>
+                            <span class="suggestion-chip" onclick="setTerm('Resolução CNE/CES nº 2/2024')">Resolução CNE/CES nº 2/2024</span>
+                            <span class="suggestion-chip" onclick="setTerm('Resolução CNE/CES')">Resolução CNE/CES</span>
+                            <span class="suggestion-chip" onclick="setTerm('reconhecimento de diplomas de pós-graduação stricto sensu obtidos no exterior')">reconhecimento de diplomas...</span>
+                            <span class="suggestion-chip" onclick="setTerm('589/2025')">589/2025</span>
+                            <span class="suggestion-chip" onclick="setTerm('relatado em 4 de setembro de 2025')">relatado em 4 de setembro de 2025</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- COLUNA 3: GERENCIAR EMAILS -->
+        <div class="top-column top-column-3">
+            <div class="card">
+                <h2>📧 Gerenciar Emails</h2>
+                <!-- Enviar para todos agora -->
+                <form method="post" style="margin-bottom: 15px;" id="sendAllNowForm">
+                    <button type="submit" id="sendAllNowBtn" name="action" value="send_now_all" style="background: var(--success-color); width: 100%;">
+                        ▶️ Enviar teste para todos agora
+                    </button>
+                </form>
+                <div id="sendAllProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
+
+                <form method="post">
+                    <div class="form-group">
+                        <label for="email_register">Cadastrar novo email</label>
+                        <input type="email" id="email_register" name="email" placeholder="Digite o email" required>
+                    </div>
+                    <button type="submit" name="action" value="register">Cadastrar</button>
+                </form>
+
+                <form method="post" style="margin-top: 20px;">
+                    <div class="form-group">
+                        <label for="email_remove">Remover email</label>
+                        <input type="email" id="email_remove" name="email" placeholder="Digite o email para remover" required>
+                    </div>
+                    <button type="submit" name="action" value="unregister" style="background: var(--error-color);">Remover</button>
+                </form>
+
+                <div class="email-list">
+                    <h3>Status dos Emails Cadastrados</h3>
+                    {% if emails %}
+                        <div style="padding: 15px; background: var(--background); border-radius: var(--radius); border: 1px solid var(--border); text-align: center;">
+                            <p style="font-size: 1.2rem; font-weight: 600; color: var(--success-color); margin: 10px 0;">
+                                📧 {{ emails|length }} email(s) cadastrado(s)
+                            </p>
+                            
+                            <!-- Informação sobre termos fixos -->
+                            <div style="margin-top: 15px; font-size: 0.8rem; color: var(--text-secondary); padding: 8px; background: #f0f0f0; border-radius: 4px;">
+                                🎓 Todos os emails cadastrados recebem resultados da busca "Mestrando Exterior" com os seguintes termos:
+                                <br><br>
+                                <strong>Termos fixos:</strong><br>
+                                • 23001.000069/2025-95<br>
+                                • Associação Brasileira das Faculdades (Abrafi)<br>
+                                • Resolução CNE/CES<br>
+                                • Resolução CNE/CES nº 2/2024<br>
+                                • reconhecimento de diplomas<br>
+                                • 589/2025<br>
+                                • relatado em 4 de setembro de 2025
+                            </div>
+                        </div>
+                    {% else %}
+                        <p style="color: var(--text-secondary); font-style: italic;">Nenhum email cadastrado.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LINHA DIVISÓRIA -->
+    <div class="divider"></div>
+
+    <!-- SEÇÃO INFERIOR: RESULTADOS ENCONTRADOS (FULL WIDTH) -->
+    <div class="bottom-section">
+        <div class="card">
+            <h2>📋 Resultados Encontrados</h2>
+            {% if results %}
+                <div class="results">
+                    <h3>Resultados da Busca ({{ results|length }})</h3>
+                    {% for result in results %}
+                        <div class="result-item" onclick="openModal({{ loop.index }})">
+                            <h4>{{ result.article.title or result.article.filename }} ({{ result.article.section }})</h4>
+                            {% if result.article.artCategory %}
+                            <p><strong>Órgão:</strong> {{ result.article.artCategory }}</p>
+                            {% endif %}
+                            <p><strong style="color: var(--success-color);">🔍 Termos que geraram este resultado:</strong>
+                               <span style="background: var(--success-color); color: white; padding: 2px 6px; border-radius: 12px; font-weight: bold;">{{ result.terms_matched|join('</span> <span style=\"background: var(--success-color); color: white; padding: 2px 6px; border-radius: 12px; font-weight: bold;\">') }}</span>
+                            </p>
+                            {% if result.summary %}
+                                <p><strong>Resumo:</strong> {{ result.summary }}</p>
+                            {% endif %}
+                            {% if result.snippets %}
+                                <div style="margin-top: 10px;">
+                                    <strong>Trechos relevantes:</strong>
+                                    {% for snippet in result.snippets[:2] %}
+                                        <div class="snippet">{{ snippet }}</div>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                            <p style="color: var(--primary-color); font-size: 0.9rem; cursor: pointer; margin-top: 10px; font-weight: 500;">
+                                🔍 Clique para ver detalhes completos
+                            </p>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 40px;">
+                    Nenhum resultado para exibir.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Modal para visualização detalhada dos resultados -->
+    <div id="resultModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Detalhes do Resultado</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="modalContent">
+                    <!-- Conteúdo será preenchido via JavaScript -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeModal()" class="btn-secondary">Fechar</button>
+                <button onclick="copyToClipboard()" class="btn-primary">Copiar Texto</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Inicializar dados dos resultados para JavaScript
+        searchResults = {{ results|tojson|safe if results else '[]' }};
+    </script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

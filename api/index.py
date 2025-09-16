@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template_string
+from flask import Flask, request, render_template_string, render_template, url_for
 import os
 import re
 import requests
@@ -12,7 +12,26 @@ import io
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import redis
+
+# Add current directory to path for storage modules
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+
+# Storage modules
+from storage.redis_client import get_redis_client
+from storage.edge_config import get_from_edge_config, set_edge_config_item
+from storage.email_storage import (
+    get_current_emails,
+    save_emails,
+    get_email_terms,
+    save_email_terms,
+    add_email_term,
+    remove_email_term,
+    get_all_email_terms,
+    emails_storage,
+    search_terms_storage
+)
 
 # Carregar variáveis de ambiente do .env
 try:
@@ -22,220 +41,8 @@ except ImportError:
     # Se python-dotenv não estiver disponível, continua sem
     pass
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='templates', static_folder='templates/static')
 
-# Edge Config configuration
-EDGE_CONFIG_ID = os.getenv('EDGE_CONFIG')
-VERCEL_TOKEN = os.getenv('VERCEL_TOKEN')
-
-# Redis configuration
-REDIS_URL = os.getenv('REDIS_URL')
-redis_client = None
-
-def get_redis_client():
-    """Inicializa cliente Redis se disponível"""
-    global redis_client
-    if redis_client is None and REDIS_URL:
-        try:
-            redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
-            redis_client.ping()  # Testa conexão
-            print("Redis conectado com sucesso!")
-        except Exception as e:
-            print(f"Erro ao conectar Redis: {e}")
-            redis_client = None
-    return redis_client
-
-def get_edge_config_url():
-    """Get Edge Config API URL"""
-    if EDGE_CONFIG_ID:
-        return f"https://api.vercel.com/v1/edge-config/{EDGE_CONFIG_ID}/items"
-    return None
-
-def get_from_edge_config(key):
-    """Get value from Edge Config"""
-    try:
-        if not EDGE_CONFIG_ID:
-            return None
-            
-        # Para leitura, usamos a URL de leitura direta
-        url = f"https://edge-config.vercel.com/{EDGE_CONFIG_ID}"
-        headers = {
-            'Authorization': f'Bearer {VERCEL_TOKEN}' if VERCEL_TOKEN else ''
-        }
-        
-        response = requests.get(f"{url}/{key}", headers=headers, timeout=5)
-        if response.status_code == 200:
-            return response.json()
-        return None
-    except Exception as e:
-        print(f"Error reading from Edge Config: {e}")
-        return None
-
-def set_edge_config_item(key, value):
-    """Set value in Edge Config"""
-    try:
-        if not EDGE_CONFIG_ID or not VERCEL_TOKEN:
-            return False
-            
-        url = get_edge_config_url()
-        headers = {
-            'Authorization': f'Bearer {VERCEL_TOKEN}',
-            'Content-Type': 'application/json'
-        }
-        
-        data = {
-            'items': [
-                {
-                    'operation': 'upsert',
-                    'key': key,
-                    'value': value
-                }
-            ]
-        }
-        
-        response = requests.patch(url, headers=headers, json=data, timeout=10)
-        return response.status_code == 200
-    except Exception as e:
-        print(f"Error writing to Edge Config: {e}")
-        return False
-
-def get_emails_from_edge_config():
-    """Get emails list from Edge Config"""
-    emails = get_from_edge_config('emails')
-    if emails and isinstance(emails, list):
-        return set(emails)
-    return set()
-
-def save_emails_to_edge_config(emails_set):
-    """Save emails list to Edge Config"""
-    emails_list = list(emails_set)
-    return set_edge_config_item('emails', emails_list)
-
-def get_search_terms_from_edge_config(email):
-    """Get search terms for a specific email from Edge Config"""
-    terms_key = f'terms_{email.replace("@", "_at_").replace(".", "_dot_")}'
-    terms = get_from_edge_config(terms_key)
-    if terms and isinstance(terms, list):
-        return terms
-    return []
-
-def save_search_terms_to_edge_config(email, terms_list):
-    """Save search terms for a specific email to Edge Config"""
-    terms_key = f'terms_{email.replace("@", "_at_").replace(".", "_dot_")}'
-    return set_edge_config_item(terms_key, terms_list)
-
-# ===================== REDIS FUNCTIONS =====================
-
-def get_emails_from_redis():
-    """Get emails list from Redis"""
-    try:
-        r = get_redis_client()
-        if r:
-            emails = r.smembers("emails:active")
-            return set(emails)
-        return set()
-    except Exception as e:
-        print(f"Erro ao buscar emails no Redis: {e}")
-        return set()
-
-def save_emails_to_redis(emails_set):
-    """Save emails list to Redis"""
-    try:
-        r = get_redis_client()
-        if r:
-            # Limpa e recria o set
-            r.delete("emails:active")
-            r.delete("emails:all")
-
-            for email in emails_set:
-                email_data = {
-                    "email": email,
-                    "name": "",
-                    "active": True,
-                    "created_at": datetime.now().isoformat()
-                }
-
-                r.set(f"email:{email}", json.dumps(email_data))
-                r.sadd("emails:all", email)
-                r.sadd("emails:active", email)
-
-            return True
-        return False
-    except Exception as e:
-        print(f"Erro ao salvar emails no Redis: {e}")
-        return False
-
-def get_search_terms_from_redis(email):
-    """Get search terms for a specific email from Redis"""
-    try:
-        r = get_redis_client()
-        if r:
-            terms_key = f"email_terms:{email}"
-            terms_data = r.get(terms_key)
-            if terms_data:
-                return json.loads(terms_data)
-            return []
-        return []
-    except Exception as e:
-        print(f"Erro ao buscar termos no Redis para {email}: {e}")
-        return []
-
-def save_search_terms_to_redis(email, terms_list):
-    """Save search terms for a specific email to Redis"""
-    try:
-        r = get_redis_client()
-        if r:
-            terms_key = f"email_terms:{email}"
-            r.set(terms_key, json.dumps(terms_list))
-            return True
-        return False
-    except Exception as e:
-        print(f"Erro ao salvar termos no Redis para {email}: {e}")
-        return False
-
-def add_search_term_to_redis(email, term):
-    """Add a search term for an email in Redis"""
-    try:
-        current_terms = get_search_terms_from_redis(email)
-        if term not in current_terms:
-            current_terms.append(term)
-            return save_search_terms_to_redis(email, current_terms)
-        return True
-    except Exception as e:
-        print(f"Erro ao adicionar termo no Redis: {e}")
-        return False
-
-def remove_search_term_from_redis(email, term):
-    """Remove a search term for an email in Redis"""
-    try:
-        current_terms = get_search_terms_from_redis(email)
-        if term in current_terms:
-            current_terms.remove(term)
-            return save_search_terms_to_redis(email, current_terms)
-        return True
-    except Exception as e:
-        print(f"Erro ao remover termo no Redis: {e}")
-        return False
-
-def add_search_term_to_edge_config(email, term):
-    """Add a search term for an email in Edge Config"""
-    current_terms = get_search_terms_from_edge_config(email)
-    if term not in current_terms:
-        current_terms.append(term)
-        return save_search_terms_to_edge_config(email, current_terms)
-    return False
-
-def remove_search_term_from_edge_config(email, term):
-    """Remove a search term for an email in Edge Config"""
-    current_terms = get_search_terms_from_edge_config(email)
-    if term in current_terms:
-        current_terms.remove(term)
-        return save_search_terms_to_edge_config(email, current_terms)
-    return False
-
-# Fallback storage (usado se Edge Config não estiver disponível)
-emails_storage = set()
-search_terms_storage = {}
 
 # INLABS credentials
 INLABS_EMAIL = os.getenv('INLABS_EMAIL', 'educmaia@gmail.com')
@@ -845,7 +652,7 @@ def cron_daily():
         # Vercel adds header 'x-vercel-cron' on cron invocations
         is_cron = request.headers.get('x-vercel-cron') is not None or request.args.get('force') == '1'
 
-        emails = sorted(list(get_emails_from_edge_config()))
+        emails = sorted(list(get_current_emails()))
         if not emails:
             return ({
                 'ok': True,
@@ -861,7 +668,7 @@ def cron_daily():
 
         # If any email has terms, run search once per unique term set? We run per email to respect per-user terms
         for email in emails:
-            terms = get_search_terms_from_edge_config(email)
+            terms = get_email_terms(email)
             if not terms:
                 per_email.append({'email': email, 'status': 'no-terms', 'matches': 0})
                 continue
@@ -959,1124 +766,8 @@ def search_dou_demo(search_term):
     
     return filtered_results
 
-# Template HTML com design original do DOU Notifier
-HTML_TEMPLATE = '''
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DOU Notifier - Serverless</title>
-    <style>
-        :root {
-            --primary-color: #0ea5e9;
-            --primary-hover: #0284c7;
-            --secondary-color: #6b7280;
-            --success-color: #059669;
-            --error-color: #dc2626;
-            --warning-color: #d97706;
-            --background: #ffffff;
-            --card-bg: #ffffff;
-            --text-primary: #111827;
-            --text-secondary: #6b7280;
-            --border: #f3f4f6;
-            --border-light: #f9fafb;
-            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-            --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-            --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-            --shadow-hover: 0 10px 20px -5px rgba(0, 0, 0, 0.12), 0 4px 8px -2px rgba(0, 0, 0, 0.08);
-            --radius: 12px;
-            --radius-sm: 6px;
-            --transition: all 0.2s ease-in-out;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #fafafa;
-            min-height: 100vh;
-            padding: 20px;
-            color: var(--text-primary);
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 40px;
-        }
-
-        .header h1 {
-            font-size: 2.5rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 10px;
-        }
-
-        .header p {
-            color: var(--text-secondary);
-            font-size: 1.1rem;
-        }
-
-        /* NOVA ESTRUTURA: 3 COLUNAS NO TOPO + RESULTADOS EMBAIXO */
-        .top-section {
-            display: flex !important;
-            width: 100% !important;
-            max-width: 1400px;
-            margin: 0 auto 30px auto;
-            padding: 0 20px;
-            gap: 20px;
-            align-items: flex-start;
-        }
-
-        .top-column {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            min-width: 320px;
-        }
-
-        .top-column-1 {
-            flex: 1 1 33.33%;
-        }
-
-        .top-column-2 {
-            flex: 1 1 33.33%;
-        }
-
-        .top-column-3 {
-            flex: 1 1 33.33%;
-        }
-
-        .divider {
-            width: 100%;
-            height: 2px;
-            background: linear-gradient(90deg, transparent 0%, var(--primary-color) 50%, transparent 100%);
-            margin: 40px 0;
-            opacity: 0.3;
-        }
-
-        .bottom-section {
-            width: 100%;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 0 20px;
-        }
-
-        .card {
-            background: var(--card-bg);
-            border-radius: var(--radius);
-            box-shadow: var(--shadow-md);
-            padding: 32px;
-            transition: var(--transition);
-            border: 1px solid var(--border);
-        }
-
-        .card:hover {
-            box-shadow: var(--shadow-lg);
-            transform: translateY(-3px);
-        }
-
-        .card h2 {
-            font-size: 1.5rem;
-            font-weight: 600;
-            margin-bottom: 20px;
-            color: var(--text-primary);
-            border-bottom: 2px solid var(--primary-color);
-            padding-bottom: 10px;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: 500;
-            color: var(--text-primary);
-        }
-
-        input[type="email"], input[type="text"] {
-            width: 100%;
-            padding: 14px 18px;
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            font-size: 1rem;
-            transition: var(--transition);
-            background: var(--background);
-            box-shadow: var(--shadow-sm);
-        }
-
-        input[type="email"]:focus, input[type="text"]:focus {
-            outline: none;
-            border-color: var(--primary-color);
-            box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1), var(--shadow);
-        }
-
-        .suggestion-chip {
-            display: inline-block;
-            background: var(--primary-color);
-            color: white;
-            padding: 8px 12px;
-            border-radius: 20px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            transition: var(--transition);
-            border: 2px solid var(--primary-color);
-            margin: 4px;
-        }
-
-        .suggestion-chip:hover {
-            background: var(--primary-hover);
-            border-color: var(--primary-hover);
-            transform: translateY(-1px);
-        }
-
-        button {
-            background: var(--primary-color);
-            color: white;
-            border: none;
-            padding: 14px 24px;
-            border-radius: var(--radius);
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: var(--transition);
-            width: 100%;
-            margin-top: 10px;
-            box-shadow: var(--shadow-sm);
-        }
-
-        button:hover {
-            background: var(--primary-hover);
-            transform: translateY(-1px);
-            box-shadow: var(--shadow-md);
-        }
-
-        button:active {
-            transform: translateY(0);
-            box-shadow: var(--shadow-sm);
-        }
-
-        .message {
-            padding: 12px 16px;
-            border-radius: var(--radius);
-            margin-bottom: 20px;
-            font-weight: 500;
-        }
-
-        .message.success {
-            background: rgba(16, 185, 129, 0.1);
-            color: var(--success-color);
-            border: 1px solid rgba(16, 185, 129, 0.2);
-        }
-
-        .message.error {
-            background: rgba(239, 68, 68, 0.1);
-            color: var(--error-color);
-            border: 1px solid rgba(239, 68, 68, 0.2);
-        }
-
-        .message.info {
-            background: rgba(14, 165, 233, 0.1);
-            color: var(--primary-color);
-            border: 1px solid rgba(14, 165, 233, 0.2);
-        }
-
-        .spinner {
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid rgba(14,165,233,0.3);
-            border-top-color: var(--primary-color);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-right: 8px;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .email-list {
-            margin-top: 20px;
-        }
-
-        .email-list ul {
-            list-style: none;
-        }
-
-        .email-list li {
-            background: var(--background);
-            padding: 12px 16px;
-            margin-bottom: 8px;
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            transition: var(--transition);
-        }
-
-        .email-list li:hover {
-            background: #e2e8f0;
-        }
-
-        .email-list li .email {
-            font-weight: 500;
-        }
-
-        .email-list li .remove-btn {
-            background: var(--error-color);
-            color: white;
-            border: none;
-            padding: 4px 8px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.8rem;
-            transition: var(--transition);
-            width: auto;
-            margin: 0;
-        }
-
-        .email-list li .remove-btn:hover {
-            background: #dc2626;
-        }
-
-        .results {
-            margin-top: 30px;
-        }
-
-        .result-item {
-            background: var(--background);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 20px;
-            margin-bottom: 20px;
-            transition: var(--transition);
-            cursor: pointer;
-            position: relative;
-        }
-
-        .result-item:hover {
-            box-shadow: var(--shadow-lg);
-            transform: translateY(-2px);
-            border-color: var(--primary-color);
-            background: linear-gradient(135deg, var(--background) 0%, rgba(59, 130, 246, 0.02) 100%);
-        }
-
-        .result-item:active {
-            transform: translateY(0);
-        }
-
-        .result-item h4 {
-            color: var(--primary-color);
-            margin-bottom: 10px;
-            font-size: 1.1rem;
-        }
-
-        .result-item p {
-            margin-bottom: 8px;
-            color: var(--text-secondary);
-        }
-
-        .snippet {
-            background: white;
-            padding: 10px;
-            border-left: 4px solid var(--primary-color);
-            margin: 8px 0;
-            font-style: italic;
-            border-radius: 0 var(--radius) var(--radius) 0;
-        }
-
-        .suggestions-panel {
-            margin-top: 15px;
-            padding: 15px;
-            background: var(--background);
-            border-radius: var(--radius);
-            border: 1px solid var(--border);
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin: 15px 0;
-        }
-
-        .stat-item {
-            background: var(--background);
-            padding: 12px;
-            border-radius: var(--radius-sm);
-            border: 1px solid var(--border);
-            text-align: center;
-        }
-
-        .stat-number {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--primary-color);
-            display: block;
-        }
-
-        .stat-label {
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-            margin-top: 4px;
-        }
-
-        /* Media queries para nova estrutura */
-        @media (max-width: 1024px) {
-            .top-section {
-                gap: 15px;
-                padding: 0 15px;
-            }
-
-            .bottom-section {
-                padding: 0 15px;
-            }
-
-            .card {
-                padding: 20px;
-            }
-        }
-
-        /* Responsivo: empilhar colunas em telas pequenas */
-        @media (max-width: 900px) {
-            .top-section {
-                flex-direction: column !important;
-                gap: 20px;
-            }
-
-            .top-column {
-                min-width: auto !important;
-            }
-
-            .top-column-1, .top-column-2, .top-column-3 {
-                flex: 1 1 100% !important;
-                width: 100% !important;
-            }
-
-            .header h1 {
-                font-size: 1.8rem;
-            }
-
-            .card {
-                padding: 20px;
-            }
-
-            .stats-grid {
-                grid-template-columns: 1fr 1fr;
-            }
-
-            .divider {
-                margin: 30px 0;
-            }
-        }
-
-        /* Para telas muito pequenas */
-        @media (max-width: 600px) {
-            .top-section, .bottom-section {
-                padding: 0 10px;
-            }
-
-            .card {
-                padding: 15px;
-            }
-
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .header h1 {
-                font-size: 1.6rem;
-            }
-
-            .divider {
-                margin: 20px 0;
-            }
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .card, .result-item {
-            animation: fadeIn 0.3s ease-out;
-        }
-
-        /* Configurações específicas para a versão serverless */
-        .serverless-info {
-            background: rgba(251, 191, 36, 0.1);
-            border: 1px solid rgba(251, 191, 36, 0.3);
-            border-radius: var(--radius);
-            padding: 15px;
-            margin-bottom: 20px;
-            color: #92400e;
-            font-weight: 500;
-        }
-
-        /* Modal Styles */
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(2px);
-            animation: fadeIn 0.3s ease-out;
-        }
-
-        .modal-content {
-            background-color: var(--card-bg);
-            margin: 2% auto;
-            padding: 0;
-            border-radius: var(--radius);
-            width: 90%;
-            max-width: 800px;
-            max-height: 90vh;
-            overflow-y: auto;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-            animation: slideIn 0.3s ease-out;
-        }
-
-        .modal-header {
-            background: var(--primary-color);
-            color: white;
-            padding: 20px;
-            border-radius: var(--radius) var(--radius) 0 0;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .modal-header h2 {
-            margin: 0;
-            font-size: 1.4rem;
-        }
-
-        .close {
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-            line-height: 1;
-            opacity: 0.7;
-            transition: var(--transition);
-        }
-
-        .close:hover,
-        .close:focus {
-            opacity: 1;
-            text-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
-        }
-
-        .modal-body {
-            padding: 25px;
-            line-height: 1.6;
-            color: var(--text-primary);
-        }
-
-        .modal-footer {
-            padding: 20px;
-            border-top: 1px solid var(--border);
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
-        }
-
-        .btn-primary, .btn-secondary {
-            padding: 10px 20px;
-            border: none;
-            border-radius: var(--radius);
-            font-weight: 500;
-            cursor: pointer;
-            transition: var(--transition);
-            font-size: 0.9rem;
-        }
-
-        .btn-primary {
-            background: var(--primary-color);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: var(--primary-hover);
-            transform: translateY(-1px);
-        }
-
-        .btn-secondary {
-            background: var(--background);
-            color: var(--text-primary);
-            border: 1px solid var(--border);
-        }
-
-        .btn-secondary:hover {
-            background: var(--card-bg);
-            transform: translateY(-1px);
-        }
-
-        .result-detail {
-            margin-bottom: 20px;
-        }
-
-        .result-detail h3 {
-            color: var(--primary-color);
-            margin-bottom: 10px;
-            font-size: 1.1rem;
-        }
-
-        .result-detail .meta-info {
-            background: var(--background);
-            padding: 15px;
-            border-radius: var(--radius);
-            margin-bottom: 15px;
-            font-size: 0.9rem;
-        }
-
-        .result-detail .content {
-            background: var(--card-bg);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 20px;
-            font-family: 'Segoe UI', system-ui, sans-serif;
-            white-space: pre-wrap;
-            max-height: 400px;
-            overflow-y: auto;
-        }
-
-        .highlight {
-            background: rgba(59, 130, 246, 0.2);
-            padding: 2px 4px;
-            border-radius: 3px;
-            font-weight: 600;
-        }
-
-        @keyframes slideIn {
-            from {
-                transform: translateY(-50px);
-                opacity: 0;
-            }
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-
-        @media (max-width: 768px) {
-            .modal-content {
-                width: 95%;
-                margin: 5% auto;
-            }
-
-            .modal-header {
-                padding: 15px;
-            }
-
-            .modal-body {
-                padding: 20px;
-            }
-
-            .modal-footer {
-                padding: 15px;
-                flex-direction: column;
-            }
-
-            .btn-primary, .btn-secondary {
-                width: 100%;
-                margin-bottom: 10px;
-            }
-        }
-    </style>
-    <script>
-        // Dados dos resultados (será preenchido pelo template)
-        let searchResults = {{ results|tojson|safe if results else '[]' }};
-        let currentModalContent = '';
-
-        function setTerm(term) {
-            document.getElementById('search_term').value = term;
-        }
-
-        function openModal(index) {
-            const result = searchResults[index - 1]; // index-1 pois o template usa loop.index que começa em 1
-            if (!result) return;
-
-            const article = result.article;
-            const title = article.title || article.filename || 'Documento DOU';
-            const section = article.section || 'N/A';
-            const terms = result.terms_matched || [];
-            const summary = result.summary || '';
-            const snippets = result.snippets || [];
-            const fullText = article.text || 'Conteúdo não disponível';
-
-            // Highlight dos termos encontrados no texto
-            let highlightedText = fullText;
-            terms.forEach(term => {
-                const regex = new RegExp(`(${escapeRegExp(term)})`, 'gi');
-                highlightedText = highlightedText.replace(regex, '<span class="highlight">$1</span>');
-            });
-
-            // Construir conteúdo do modal
-            let modalHtml = `
-                <div class="result-detail">
-                    <div class="meta-info">
-                        <strong>📄 Documento:</strong> ${title}<br>
-                        <strong>📋 Seção:</strong> ${section}<br>
-                        <strong>📁 Arquivo:</strong> ${article.filename || 'N/A'}<br>
-                        <strong>🔍 Termos encontrados:</strong> ${terms.join(', ')}<br>
-                        <strong>📝 Tamanho:</strong> ${fullText.length.toLocaleString()} caracteres
-                    </div>
-            `;
-
-            if (summary) {
-                modalHtml += `
-                    <div class="result-detail">
-                        <h3>🤖 Resumo (IA)</h3>
-                        <div style="background: rgba(59, 130, 246, 0.1); padding: 15px; border-radius: var(--radius); border-left: 4px solid var(--primary-color);">
-                            ${summary}
-                        </div>
-                    </div>
-                `;
-            }
-
-            if (snippets && snippets.length > 0) {
-                modalHtml += `
-                    <div class="result-detail">
-                        <h3>📝 Trechos Relevantes</h3>
-                `;
-                snippets.forEach(snippet => {
-                    modalHtml += `<div class="snippet" style="background: var(--background); padding: 12px; margin: 8px 0; border-radius: var(--radius); border-left: 3px solid var(--success-color);">${snippet}</div>`;
-                });
-                modalHtml += `</div>`;
-            }
-
-            modalHtml += `
-                <div class="result-detail">
-                    <h3>📄 Conteúdo Completo</h3>
-                    <div class="content">${highlightedText}</div>
-                </div>
-            `;
-
-            // Definir conteúdo do modal
-            document.getElementById('modalTitle').textContent = title;
-            document.getElementById('modalContent').innerHTML = modalHtml;
-            currentModalContent = fullText;
-
-            // Mostrar modal
-            const modal = document.getElementById('resultModal');
-            modal.style.display = 'block';
-            document.body.style.overflow = 'hidden'; // Prevenir scroll do fundo
-
-            // Scroll para o topo do modal
-            const modalContent = modal.querySelector('.modal-content');
-            modalContent.scrollTop = 0;
-        }
-
-        function closeModal() {
-            const modal = document.getElementById('resultModal');
-            modal.style.display = 'none';
-            document.body.style.overflow = 'auto'; // Restaurar scroll
-        }
-
-        function copyToClipboard() {
-            if (currentModalContent) {
-                navigator.clipboard.writeText(currentModalContent).then(() => {
-                    alert('Conteúdo copiado para a área de transferência!');
-                }).catch(err => {
-                    // Fallback para navegadores mais antigos
-                    const textArea = document.createElement('textarea');
-                    textArea.value = currentModalContent;
-                    document.body.appendChild(textArea);
-                    textArea.select();
-                    document.execCommand('copy');
-                    document.body.removeChild(textArea);
-                    alert('Conteúdo copiado para a área de transferência!');
-                });
-            }
-        }
-
-        function escapeRegExp(string) {
-            return string.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
-        }
-
-        // Event listeners
-        document.addEventListener('DOMContentLoaded', function() {
-            // Fechar modal clicando no X
-            const closeBtn = document.querySelector('.close');
-            if (closeBtn) {
-                closeBtn.addEventListener('click', closeModal);
-            }
-
-            // Fechar modal clicando fora do conteúdo
-            const modal = document.getElementById('resultModal');
-            if (modal) {
-                modal.addEventListener('click', function(e) {
-                    if (e.target === modal) {
-                        closeModal();
-                    }
-                });
-            }
-
-            // Fechar modal com tecla ESC
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape') {
-                    closeModal();
-                }
-            });
-
-            // Mostrar mensagem de processamento ao atualizar cache do DOU
-            try {
-                const refreshInput = document.querySelector('form input[name="action"][value="refresh_cache"]');
-                if (refreshInput) {
-                    const refreshForm = refreshInput.closest('form');
-                    const refreshButton = refreshForm.querySelector('button[type="submit"]');
-                    let msg = document.getElementById('refreshProcessing');
-                    if (!msg) {
-                        msg = document.createElement('div');
-                        msg.id = 'refreshProcessing';
-                        msg.className = 'message info';
-                        msg.style.display = 'none';
-                        msg.style.marginTop = '10px';
-                        refreshForm.parentElement.insertBefore(msg, refreshForm.nextSibling);
-                    }
-                    refreshForm.addEventListener('submit', function() {
-                        if (refreshButton) {
-                            refreshButton.disabled = true;
-                            refreshButton.textContent = '🔄 Atualizando cache...';
-                        }
-                        msg.innerHTML = '<span class="spinner"></span>Download em andamento. Essa operação dura em torno de 20 segundos.';
-                        msg.style.display = 'block';
-                    });
-                }
-            } catch (err) {
-                // Silenciar erros não críticos
-            }
-
-            // Mostrar mensagem de processamento ao submeter a busca
-            try {
-                const searchForm = document.getElementById('searchForm');
-                const searchBtn = document.getElementById('searchBtn');
-                const searchMsg = document.getElementById('searchProcessing');
-                if (searchForm && searchBtn && searchMsg) {
-                    searchForm.addEventListener('submit', function() {
-                        searchBtn.disabled = true;
-                        searchBtn.textContent = '🔎 Buscando...';
-                        // Exibe a mesma mensagem solicitada
-                        searchMsg.innerHTML = '<span class="spinner"></span>Download em andamento. Essa operação dura em torno de 20 segundos.';
-                        searchMsg.style.display = 'block';
-                    });
-                }
-
-                // Mostrar mensagem de processamento para busca Mestrando Exterior
-                const mestrandoForm = document.getElementById('searchMestrandoForm');
-                const mestrandoBtn = document.getElementById('searchMestrandoBtn');
-                const mestrandoMsg = document.getElementById('mestrandoProcessing');
-                if (mestrandoForm && mestrandoBtn && mestrandoMsg) {
-                    mestrandoForm.addEventListener('submit', function() {
-                        mestrandoBtn.disabled = true;
-                        mestrandoBtn.textContent = '🔍 Buscando Mestrando...';
-                        mestrandoMsg.innerHTML = '<span class="spinner"></span>Busca sequencial em andamento. A busca completa pode demorar até 1 minuto.';
-                        mestrandoMsg.style.display = 'block';
-                    });
-                }
-            } catch (err) {
-                // Silenciar erros não críticos
-            }
-
-            // Mostrar mensagem de processamento ao submeter busca de todas as sugestões
-            try {
-                const suggestionsForm = document.getElementById('searchSuggestionsForm');
-                const suggestionsBtn = document.getElementById('searchSuggestionsBtn');
-                const suggestionsMsg = document.getElementById('suggestionsProcessing');
-                if (suggestionsForm && suggestionsBtn && suggestionsMsg) {
-                    suggestionsForm.addEventListener('submit', function() {
-                        suggestionsBtn.disabled = true;
-                        suggestionsBtn.textContent = '🔎 Buscando todas as sugestões...';
-                        suggestionsMsg.innerHTML = '<span class="spinner"></span>Download em andamento. Essa operação dura em torno de 20 segundos.';
-                        suggestionsMsg.style.display = 'block';
-                    });
-                }
-            } catch (err) {
-                // Silenciar erros não críticos
-            }
-
-            // Mostrar mensagem ao enviar teste para todos agora
-            try {
-                const sendAllForm = document.getElementById('sendAllNowForm');
-                const sendAllBtn = document.getElementById('sendAllNowBtn');
-                const sendAllMsg = document.getElementById('sendAllProcessing');
-                if (sendAllForm && sendAllBtn && sendAllMsg) {
-                    sendAllForm.addEventListener('submit', function() {
-                        sendAllBtn.disabled = true;
-                        sendAllBtn.textContent = '▶️ Enviando testes...';
-                        sendAllMsg.innerHTML = '<span class="spinner"></span>Download em andamento. Essa operação dura em torno de 20 segundos.';
-                        sendAllMsg.style.display = 'block';
-                    });
-                }
-            } catch (err) {
-                // Silenciar erros não críticos
-            }
-        });
-    </script>
-</head>
-<body>
-    <div class="header">
-        <h1>DOU Notifier</h1>
-        <p>Gerencie notificações e busque no Diário Oficial da União</p>
-    </div>
-
-    {% if message %}
-        <div class="message {% if 'Erro' in message or 'não encontrado' in message %}error{% else %}success{% endif %}">
-            {{ message }}
-        </div>
-    {% endif %}
-
-    <!-- SEÇÃO SUPERIOR: 3 COLUNAS LADO A LADO -->
-    <div class="top-section">
-        <!-- COLUNA 1: ESTATÍSTICAS DA BUSCA -->
-        <div class="top-column top-column-1">
-            <div class="card">
-                <h2>📊 Estatísticas da Busca</h2>
-
-                <!-- Botão de Atualização -->
-                <form method="post" style="margin-bottom: 20px;" id="refreshCacheForm">
-                    <input type="hidden" name="action" value="refresh_cache">
-                    <button type="submit" style="background: var(--warning-color); width: 100%;" id="refreshCacheBtn">
-                        🔄 Atualizar Cache DOU
-                    </button>
-                </form>
-                <div id="refreshProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
-
-                {% if search_stats %}
-                    {% if search_stats.get('error') %}
-                        <div style="padding: 15px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: var(--radius); color: var(--error-color); margin-bottom: 20px;">
-                            <h4>🚨 Erro no Processamento</h4>
-                            <p><strong>Erro:</strong> {{ search_stats.get('error', 'Unknown error') }}</p>
-                            <details style="margin-top: 10px;">
-                                <summary style="cursor: pointer; color: var(--primary-color);">Ver detalhes técnicos</summary>
-                                <pre style="white-space: pre-wrap; font-size: 0.8rem; margin-top: 10px;">{{ search_stats.get('traceback', 'No traceback available') }}</pre>
-                            </details>
-                            <p style="margin-top: 10px;"><a href="/debug" target="_blank" style="color: var(--primary-color);">🔧 Ir para página de debug</a></p>
-                        </div>
-                    {% else %}
-                        <div class="stats-grid">
-                            <div class="stat-item">
-                                <span class="stat-number">{{ search_stats.get('xml_files_processed', 0) }}</span>
-                                <div class="stat-label">Arquivos XML<br>Processados</div>
-                            </div>
-                            <div class="stat-item">
-                                <span class="stat-number">{{ search_stats.get('total_articles_extracted', 0) }}</span>
-                                <div class="stat-label">Artigos<br>Extraídos</div>
-                            </div>
-                            <div class="stat-item">
-                                <span class="stat-number">{{ search_stats.get('sections_downloaded', 0) }}</span>
-                                <div class="stat-label">Seções DOU<br>Baixadas</div>
-                            </div>
-                            <div class="stat-item">
-                                <span class="stat-number">{{ search_stats.get('matches_found', 0) }}</span>
-                                <div class="stat-label">Matches<br>Encontrados</div>
-                            </div>
-                        </div>
-
-                        <div style="margin-top: 20px; padding: 15px; background: var(--background); border-radius: var(--radius); border: 1px solid var(--border);">
-                            <h4>⏱️ Tempo de Processamento</h4>
-                            <ul style="margin: 10px 0; padding-left: 20px; color: var(--text-secondary); font-size: 0.9rem;">
-                                <li>Download: {{ search_stats.get('download_time', 0) }}s</li>
-                                <li>Extração: {{ search_stats.get('extraction_time', 0) }}s</li>
-                                <li>Busca: {{ search_stats.get('search_time', 0) }}s</li>
-                                <li><strong>Total: {{ (search_stats.get('download_time', 0) + search_stats.get('extraction_time', 0) + search_stats.get('search_time', 0))|round(2) }}s</strong></li>
-                            </ul>
-                        </div>
-                    {% endif %}
-                {% else %}
-                    <div style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 40px;">
-                        📊 Faça uma busca para ver as estatísticas de processamento
-                    </div>
-                {% endif %}
-            </div>
-        </div>
-
-        <!-- COLUNA 2: BUSCAR NO DOU -->
-        <div class="top-column top-column-2">
-            <div class="card">
-                <h2>🔍 Buscar no DOU</h2>
-                <form method="post" id="searchForm">
-                    <div class="form-group">
-                        <label for="search_term">Termo de busca</label>
-                        <input type="text" id="search_term" name="search_term"
-                               placeholder="Digite o termo de busca"
-                               value="{{ search_term or '' }}" required>
-                    </div>
-                    <button type="submit" id="searchBtn">Buscar</button>
-                </form>
-                <div id="searchProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
-
-                <!-- Botão para busca Mestrando Exterior -->
-                <form method="post" style="margin-top: 15px;" id="searchMestrandoForm">
-                    <button type="submit" name="action" value="search_mestrando_exterior" style="background: var(--primary-color); width: 100%;" id="searchMestrandoBtn">
-                        🎓 Busca Mestrando Exterior
-                    </button>
-                </form>
-                <div id="mestrandoProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
-                <div class="info-message" style="font-size: 0.9em; color: #666; margin-top: 5px; padding: 8px; background: #f9f9f9; border-radius: 4px;">
-                    ℹ️ Esta busca percorre os 6 termos abaixo sequencialmente e pode demorar até 1 minuto para sua conclusão.
-                </div>
-
-                <div style="margin-top: 20px;">
-                    <div class="suggestions-panel">
-                        <strong>Sugestões de busca:</strong>
-                        <div style="margin-top: 10px;">
-                            <span class="suggestion-chip" onclick="setTerm('23001.000069/2025-95')">23001.000069/2025-95</span>
-                            <span class="suggestion-chip" onclick="setTerm('Associação Brasileira das Faculdades (Abrafi)')">Associação Brasileira das Faculdades (Abrafi)</span>
-                            <span class="suggestion-chip" onclick="setTerm('Resolução CNE/CES nº 2/2024')">Resolução CNE/CES nº 2/2024</span>
-                            <span class="suggestion-chip" onclick="setTerm('reconhecimento de diplomas de pós-graduação stricto sensu obtidos no exterior')">reconhecimento de diplomas...</span>
-                            <span class="suggestion-chip" onclick="setTerm('589/2025')">589/2025</span>
-                            <span class="suggestion-chip" onclick="setTerm('relatado em 4 de setembro de 2025')">relatado em 4 de setembro de 2025</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- COLUNA 3: GERENCIAR EMAILS -->
-        <div class="top-column top-column-3">
-            <div class="card">
-                <h2>📧 Gerenciar Emails</h2>
-                <!-- Enviar para todos agora -->
-                <form method="post" style="margin-bottom: 15px;" id="sendAllNowForm">
-                    <button type="submit" id="sendAllNowBtn" name="action" value="send_now_all" style="background: var(--success-color); width: 100%;">
-                        ▶️ Enviar teste para todos agora
-                    </button>
-                </form>
-                <div id="sendAllProcessing" class="message info" style="display:none; margin-top: 10px;"></div>
-
-                <form method="post">
-                    <div class="form-group">
-                        <label for="email_register">Cadastrar novo email</label>
-                        <input type="email" id="email_register" name="email" placeholder="Digite o email" required>
-                    </div>
-                    <button type="submit" name="action" value="register">Cadastrar</button>
-                </form>
-
-                <form method="post" style="margin-top: 20px;">
-                    <div class="form-group">
-                        <label for="email_remove">Remover email</label>
-                        <input type="email" id="email_remove" name="email" placeholder="Digite o email para remover" required>
-                    </div>
-                    <button type="submit" name="action" value="unregister" style="background: var(--error-color);">Remover</button>
-                </form>
-
-                <div class="email-list">
-                    <h3>Status dos Emails Cadastrados</h3>
-                    {% if emails %}
-                        <div style="padding: 15px; background: var(--background); border-radius: var(--radius); border: 1px solid var(--border); text-align: center;">
-                            <p style="font-size: 1.2rem; font-weight: 600; color: var(--success-color); margin: 10px 0;">
-                                📧 {{ emails|length }} email(s) cadastrado(s)
-                            </p>
-                            <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 10px 0;">
-                                Por motivos de conformidade com a LGPD, os emails cadastrados não são exibidos.
-                            </p>
-
-                            <!-- Informação sobre termos fixos -->
-                            <div style="margin-top: 15px; font-size: 0.8rem; color: var(--text-secondary); padding: 8px; background: #f0f0f0; border-radius: 4px;">
-                                🎓 Todos os emails cadastrados recebem resultados da busca "Mestrando Exterior" com os seguintes termos:
-                                <br><br>
-                                <strong>Termos fixos:</strong><br>
-                                • 23001.000069/2025-95<br>
-                                • Associação Brasileira das Faculdades (Abrafi)<br>
-                                • Resolução CNE/CES<br>
-                                • Resolução CNE/CES nº 2/2024<br>
-                                • reconhecimento de diplomas<br>
-                                • 589/2025<br>
-                                • relatado em 4 de setembro de 2025
-                            </div>
-                        </div>
-                    {% else %}
-                        <p style="color: var(--text-secondary); font-style: italic;">Nenhum email cadastrado.</p>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- LINHA DIVISÓRIA -->
-    <div class="divider"></div>
-
-    <!-- SEÇÃO INFERIOR: RESULTADOS ENCONTRADOS (FULL WIDTH) -->
-    <div class="bottom-section">
-        <div class="card">
-            <h2>📋 Resultados Encontrados</h2>
-            {% if results %}
-                <div class="results">
-                    <h3>Resultados da Busca ({{ results|length }})</h3>
-                    {% for result in results %}
-                        <div class="result-item" onclick="openModal({{ loop.index }})">
-                            <h4>{{ result.article.title or result.article.filename }} ({{ result.article.section }})</h4>
-                            {% if result.article.artCategory %}
-                            <p><strong>Órgão:</strong> {{ result.article.artCategory }}</p>
-                            {% endif %}
-                            <p><strong style="color: var(--success-color);">🔍 Termos que geraram este resultado:</strong>
-                               <span style="background: var(--success-color); color: white; padding: 2px 6px; border-radius: 12px; font-weight: bold;">{{ result.terms_matched|join('</span> <span style=\"background: var(--success-color); color: white; padding: 2px 6px; border-radius: 12px; font-weight: bold;\">') }}</span>
-                            </p>
-                            {% if result.summary %}
-                                <p><strong>Resumo:</strong> {{ result.summary }}</p>
-                            {% endif %}
-                            {% if result.snippets %}
-                                <div style="margin-top: 10px;">
-                                    <strong>Trechos relevantes:</strong>
-                                    {% for snippet in result.snippets[:2] %}
-                                        <div class="snippet">{{ snippet }}</div>
-                                    {% endfor %}
-                                </div>
-                            {% endif %}
-                            <p style="color: var(--primary-color); font-size: 0.9rem; cursor: pointer; margin-top: 10px; font-weight: 500;">
-                                🔍 Clique para ver detalhes completos
-                            </p>
-                        </div>
-                    {% endfor %}
-                </div>
-            {% else %}
-                <div style="text-align: center; color: var(--text-secondary); font-style: italic; padding: 40px;">
-                    Nenhum resultado para exibir.
-                </div>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- Modal para visualização detalhada dos resultados -->
-    <div id="resultModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 id="modalTitle">Detalhes do Resultado</h2>
-                <span class="close">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div id="modalContent">
-                    <!-- Conteúdo será preenchido via JavaScript -->
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button onclick="closeModal()" class="btn-secondary">Fechar</button>
-                <button onclick="copyToClipboard()" class="btn-primary">Copiar Texto</button>
-            </div>
-        </div>
-    </div>
-
-</body>
-</html>
-'''
+# HTML_TEMPLATE removido - agora usando arquivos externos em templates/
+# Arquivos: templates/main.html, templates/static/style.css, templates/static/script.js
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
@@ -2094,24 +785,8 @@ def home():
         smtp_pass = bool(os.getenv('SMTP_PASS'))
         edge_config_available = bool(EDGE_CONFIG_ID)
         
-        # Carregar emails: Prioridade Redis > Edge Config > Memória
-        redis_available = get_redis_client() is not None
-
-        if redis_available:
-            current_emails = get_emails_from_redis()
-            if not current_emails and edge_config_available:
-                # Fallback para Edge Config se Redis vazio
-                current_emails = get_emails_from_edge_config()
-                if current_emails is None:
-                    current_emails = emails_storage  # Fallback final
-            elif not current_emails:
-                current_emails = emails_storage
-        elif edge_config_available:
-            current_emails = get_emails_from_edge_config()
-            if current_emails is None:
-                current_emails = emails_storage  # Fallback
-        else:
-            current_emails = emails_storage
+        # Carregar emails usando função unificada
+        current_emails = get_current_emails()
         
         if request.method == 'POST':
             # Prioritizar ações específicas antes de verificar search_term
@@ -2196,18 +871,9 @@ def home():
                 # para evitar cair no else que valida email
                 email_terms = {}
                 for email in current_emails:
-                    if redis_available:
-                        email_terms[email] = get_search_terms_from_redis(email)
-                        if not email_terms[email] and edge_config_available:
-                            email_terms[email] = get_search_terms_from_edge_config(email)
-                        if not email_terms[email]:
-                            email_terms[email] = search_terms_storage.get(email, [])
-                    elif edge_config_available:
-                        email_terms[email] = get_search_terms_from_edge_config(email)
-                    else:
-                        email_terms[email] = search_terms_storage.get(email, [])
+                    email_terms[email] = get_email_terms(email)
 
-                return render_template_string(HTML_TEMPLATE,
+                return render_template('main.html',
                                             message=message,
                                             results=search_results,
                                             search_term=search_term,
@@ -2221,16 +887,7 @@ def home():
                 try:
                     all_terms = []
                     for email in current_emails:
-                        if redis_available:
-                            email_terms = get_search_terms_from_redis(email)
-                            if not email_terms and edge_config_available:
-                                email_terms = get_search_terms_from_edge_config(email)
-                            if not email_terms:
-                                email_terms = search_terms_storage.get(email, [])
-                        elif edge_config_available:
-                            email_terms = get_search_terms_from_edge_config(email)
-                        else:
-                            email_terms = search_terms_storage.get(email, [])
+                        email_terms = get_email_terms(email)
                         all_terms.extend(email_terms)
 
                     # Remove duplicates
@@ -2264,18 +921,9 @@ def home():
                 # Retornar imediatamente após processar search_all_terms
                 email_terms = {}
                 for email in current_emails:
-                    if redis_available:
-                        email_terms[email] = get_search_terms_from_redis(email)
-                        if not email_terms[email] and edge_config_available:
-                            email_terms[email] = get_search_terms_from_edge_config(email)
-                        if not email_terms[email]:
-                            email_terms[email] = search_terms_storage.get(email, [])
-                    elif edge_config_available:
-                        email_terms[email] = get_search_terms_from_edge_config(email)
-                    else:
-                        email_terms[email] = search_terms_storage.get(email, [])
+                    email_terms[email] = get_email_terms(email)
 
-                return render_template_string(HTML_TEMPLATE,
+                return render_template('main.html',
                                             message=message,
                                             results=search_results,
                                             search_term=search_term,
@@ -2298,18 +946,9 @@ def home():
                 # Retornar imediatamente após processar refresh_cache
                 email_terms = {}
                 for email in current_emails:
-                    if redis_available:
-                        email_terms[email] = get_search_terms_from_redis(email)
-                        if not email_terms[email] and edge_config_available:
-                            email_terms[email] = get_search_terms_from_edge_config(email)
-                        if not email_terms[email]:
-                            email_terms[email] = search_terms_storage.get(email, [])
-                    elif edge_config_available:
-                        email_terms[email] = get_search_terms_from_edge_config(email)
-                    else:
-                        email_terms[email] = search_terms_storage.get(email, [])
+                    email_terms[email] = get_email_terms(email)
 
-                return render_template_string(HTML_TEMPLATE,
+                return render_template('main.html',
                                             message=message,
                                             results=search_results,
                                             search_term=search_term,
@@ -2327,16 +966,7 @@ def home():
                     for email in current_emails:
                         processed += 1
                         # Get terms for this email using Redis priority
-                        if redis_available:
-                            terms = get_search_terms_from_redis(email)
-                            if not terms and edge_config_available:
-                                terms = get_search_terms_from_edge_config(email)
-                            if not terms:
-                                terms = search_terms_storage.get(email, [])
-                        elif edge_config_available:
-                            terms = get_search_terms_from_edge_config(email)
-                        else:
-                            terms = search_terms_storage.get(email, [])
+                        terms = get_email_terms(email)
 
                         if not terms:
                             skipped += 1
@@ -2359,18 +989,9 @@ def home():
                 # Retornar imediatamente após processar send_now_all
                 email_terms = {}
                 for email in current_emails:
-                    if redis_available:
-                        email_terms[email] = get_search_terms_from_redis(email)
-                        if not email_terms[email] and edge_config_available:
-                            email_terms[email] = get_search_terms_from_edge_config(email)
-                        if not email_terms[email]:
-                            email_terms[email] = search_terms_storage.get(email, [])
-                    elif edge_config_available:
-                        email_terms[email] = get_search_terms_from_edge_config(email)
-                    else:
-                        email_terms[email] = search_terms_storage.get(email, [])
+                    email_terms[email] = get_email_terms(email)
 
-                return render_template_string(HTML_TEMPLATE,
+                return render_template('main.html',
                                             message=message,
                                             results=search_results,
                                             search_term=search_term,
@@ -2471,18 +1092,9 @@ def home():
                 # Retornar imediatamente após processar send_now_all
                 email_terms = {}
                 for email in current_emails:
-                    if redis_available:
-                        email_terms[email] = get_search_terms_from_redis(email)
-                        if not email_terms[email] and edge_config_available:
-                            email_terms[email] = get_search_terms_from_edge_config(email)
-                        if not email_terms[email]:
-                            email_terms[email] = search_terms_storage.get(email, [])
-                    elif edge_config_available:
-                        email_terms[email] = get_search_terms_from_edge_config(email)
-                    else:
-                        email_terms[email] = search_terms_storage.get(email, [])
+                    email_terms[email] = get_email_terms(email)
 
-                return render_template_string(HTML_TEMPLATE,
+                return render_template('main.html',
                                             message=message,
                                             results=search_results,
                                             search_term=search_term,
@@ -2538,90 +1150,35 @@ def home():
                         message = f"Erro ao enviar para {email}: {str(e)}"
 
                 elif action in ['register', 'unregister'] and email:
-                    redis_available = get_redis_client() is not None
 
                     if action == 'register':
                         if email in current_emails:
                             message = f'Email {email} já está cadastrado.'
                         else:
                             current_emails.add(email)
-
-                            # Prioridade: Redis > Edge Config > Memória
-                            if redis_available:
-                                if save_emails_to_redis(current_emails):
-                                    message = f'Email {email} cadastrado com sucesso! (Redis) 🚀'
-                                else:
-                                    # Fallback para Edge Config
-                                    if edge_config_available and save_emails_to_edge_config(current_emails):
-                                        message = f'Email {email} cadastrado com sucesso! (Edge Config)'
-                                    else:
-                                        emails_storage.add(email)
-                                        message = f'Email {email} cadastrado com sucesso! (Memória)'
-                            elif edge_config_available:
-                                if save_emails_to_edge_config(current_emails):
-                                    message = f'Email {email} cadastrado com sucesso! (Edge Config)'
-                                else:
-                                    emails_storage.add(email)
-                                    message = f'Email {email} cadastrado com sucesso! (Fallback)'
+                            if save_emails(current_emails):
+                                message = f'Email {email} cadastrado com sucesso!'
                             else:
-                                emails_storage.add(email)
-                                message = f'Email {email} cadastrado com sucesso! (Memória)'
+                                message = f'Erro ao cadastrar email {email}'
 
                     elif action == 'unregister':
                         if email in current_emails:
                             current_emails.remove(email)
-
-                            # Prioridade: Redis > Edge Config > Memória
-                            if redis_available:
-                                if save_emails_to_redis(current_emails):
-                                    # Remove também os termos do email no Redis
-                                    save_search_terms_to_redis(email, [])
-                                    message = f'Email {email} removido com sucesso! (Redis) 🚀'
-                                else:
-                                    # Fallback para Edge Config
-                                    if edge_config_available and save_emails_to_edge_config(current_emails):
-                                        terms_key = f'terms_{email.replace("@", "_at_").replace(".", "_dot_")}'
-                                        set_edge_config_item(terms_key, [])
-                                        message = f'Email {email} removido com sucesso! (Edge Config)'
-                                    else:
-                                        emails_storage.discard(email)
-                                        search_terms_storage.pop(email, None)
-                                        message = f'Email {email} removido com sucesso! (Memória)'
-                            elif edge_config_available:
-                                if save_emails_to_edge_config(current_emails):
-                                    terms_key = f'terms_{email.replace("@", "_at_").replace(".", "_dot_")}'
-                                    set_edge_config_item(terms_key, [])
-                                    message = f'Email {email} removido com sucesso! (Edge Config)'
-                                else:
-                                    emails_storage.discard(email)
-                                    search_terms_storage.pop(email, None)
-                                    message = f'Email {email} removido com sucesso! (Fallback)'
+                            if save_emails(current_emails):
+                                # Remove também os termos do email
+                                save_email_terms(email, [])
+                                message = f'Email {email} removido com sucesso!'
                             else:
-                                emails_storage.discard(email)
-                                search_terms_storage.pop(email, None)
-                                message = f'Email {email} removido com sucesso! (Memória)'
+                                message = f'Erro ao remover email {email}'
                         else:
                             message = f'Email {email} não encontrado.'
                 else:
                     message = "Por favor, forneça um email válido."
         
-        # Carregar termos de busca para cada email: Prioridade Redis > Edge Config > Memória
-        email_terms = {}
-        for email in current_emails:
-            if redis_available:
-                email_terms[email] = get_search_terms_from_redis(email)
-                # Se Redis vazio, tenta Edge Config como fallback
-                if not email_terms[email] and edge_config_available:
-                    email_terms[email] = get_search_terms_from_edge_config(email)
-                # Se ainda vazio, usa memória
-                if not email_terms[email]:
-                    email_terms[email] = search_terms_storage.get(email, [])
-            elif edge_config_available:
-                email_terms[email] = get_search_terms_from_edge_config(email)
-            else:
-                email_terms[email] = search_terms_storage.get(email, [])
+        # Carregar termos de busca para cada email usando função unificada
+        email_terms = get_all_email_terms()
 
-        return render_template_string(HTML_TEMPLATE,
+        return render_template('main.html',
                                     message=message,
                                     results=search_results,
                                     search_term=search_term,
